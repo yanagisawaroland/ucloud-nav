@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>陕西榆林经济发展变化及架构</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    background: #f8fafc;
+    font-family: "Microsoft YaHei", sans-serif;
+    padding: 30px 20px;
+    color: #1e293b;
+}
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    padding: 30px;
+}
+h1 {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #0f172a;
+}
+.subtitle {
+    text-align: center;
+    color: #64748b;
+    margin-bottom: 40px;
+    font-size: 15px;
+}
+.flow {
+    position: relative;
+    height: 460px;
+}
+.node {
+    position: absolute;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+    background: #fff;
+    border: 2px solid #3b82f6;
+    text-align: center;
+    min-width: 160px;
+}
+.line {
+    position: absolute;
+    height: 2px;
+    background: #94a3b8;
+    transition: all 0.4s;
+}
+.arrow {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-style: solid;
+}
+.btn-bar {
+    text-align: center;
+    margin: 30px 0;
+}
+button {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: none;
+    background: #2563eb;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+    margin: 0 10px;
+}
+.desc {
+    line-height: 2;
+    font-size: 15px;
+    color: #334155;
+    background: #f1f5f9;
+    padding: 20px;
+    border-radius: 10px;
+}
+.active { background: #2563eb; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>陕西榆林经济发展变化及架构</h1>
+    <p class="subtitle">能源 + 化工 + 制造 + 农业 + 数字经济 现代化体系</p>
+    <div class="flow">
+        <div class="node" style="top:30px;left:50%;transform:translateX(-50%)">榆林整体经济定位</div>
+        <div class="node" style="top:130px;left:80px">能源产业（煤/油/气）</div>
+        <div class="node" style="top:130px;left:280px">高端能源化工</div>
+        <div class="node" style="top:130px;left:480px">先进制造</div>
+        <div class="node" style="top:130px;left:680px">现代农业</div>
+        <div class="node" style="top:130px;left:880px">数字经济</div>
+        <div class="node" style="top:280px;left:200px">基础设施配套</div>
+        <div class="node" style="top:280px;left:450px">营商环境 & 政策</div>
+        <div class="node" style="top:280px;left:700px">生态绿色发展</div>
+        <div class="node" style="top:400px;left:50%;transform:translateX(-50%)">高质量发展目标</div>
+    </div>
+    <div class="btn-bar">
+        <button onclick="reset()">重置</button>
+        <button onclick="play()">播放流程</button>
+    </div>
+    <div class="desc">
+        榆林已从传统能源城市转型为“高端能化+先进制造+数字经济+生态优先”的综合型经济架构。<br>
+        核心支柱：煤炭、石油、天然气、煤化工全产业链。<br>
+        发展方向：绿色低碳、数字化、产业链升级、区域协同、乡村振兴。
+    </div>
+</div>
+<script>
+function reset(){
+    document.querySelectorAll('.line').forEach(i=>i.classList.remove('active'));
+}
+function play(){
+    reset();
+    let lines = document.querySelectorAll('.line');
+    let i=0;
+    let timer = setInterval(()=>{
+        if(i>=lines.length){clearInterval(timer);return;}
+        lines[i].classList.add('active');
+        i++;
+    },400);
+}
+</script>
+</body>
+</html>

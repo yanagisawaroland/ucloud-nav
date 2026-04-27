@@ -1,0 +1,603 @@
+cat > /mnt/user-data/outputs/istio-overview.html << 'EOF'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Istio 核心功能与使用场景</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.15em; margin-bottom: 4px; color: #1e293b; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 6px 13px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.72em; font-weight: 600; transition: all 0.2s; }
+.tab.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+.tab:hover:not(.active) { border-color: #0f766e; color: #0f766e; }
+
+.stage { display: none; max-width: 980px; margin: 0 auto; }
+.stage.active { display: block; }
+
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 12px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; font-weight: 700; }
+
+.two-col { display: grid; grid-template-columns: 1fr 280px; gap: 12px; }
+
+/* 功能卡片 */
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.feature-card { border-radius: 10px; padding: 14px; border: 1px solid; cursor: pointer; transition: all 0.2s; }
+.feature-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.fc-icon { font-size: 1.6em; margin-bottom: 6px; }
+.fc-title { font-size: 0.8em; font-weight: 700; margin-bottom: 4px; }
+.fc-desc { font-size: 0.65em; line-height: 1.5; opacity: 0.8; }
+
+.fc-blue { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.fc-teal { background: #f0fdfa; border-color: #99f6e4; color: #0f766e; }
+.fc-purple { background: #faf5ff; border-color: #e9d5ff; color: #7e22ce; }
+.fc-orange { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+.fc-green { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.fc-red { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+/* 架构图 */
+.arch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.arch-box { border-radius: 10px; padding: 10px 16px; text-align: center; border: 2px solid; width: 100%; max-width: 460px; }
+.arch-title { font-size: 0.78em; font-weight: 700; margin-bottom: 3px; }
+.arch-detail { font-size: 0.63em; opacity: 0.8; }
+.arch-arrow { color: #94a3b8; font-size: 1em; text-align: center; }
+
+.ab-control { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.ab-data { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.ab-sidecar { background: #f0fdfa; border-color: #14b8a6; color: #0f766e; }
+.ab-app { background: #f8fafc; border-color: #94a3b8; color: #475569; }
+
+/* 流量动画 */
+.traffic-demo { position: relative; background: #f8fafc; border-radius: 10px; padding: 14px; overflow: hidden; }
+.svc-row { display: flex; justify-content: center; gap: 16px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.svc-box { border-radius: 8px; padding: 8px 12px; text-align: center; border: 2px solid; min-width: 90px; position: relative; }
+.svc-name { font-size: 0.72em; font-weight: 700; }
+.svc-tag { font-size: 0.6em; margin-top: 2px; opacity: 0.8; }
+.svc-v1 { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.svc-v2 { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.svc-ok { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.svc-err { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+.svc-gray { background: #f8fafc; border-color: #94a3b8; color: #475569; }
+
+.weight-bar { display: flex; height: 20px; border-radius: 6px; overflow: hidden; margin: 6px 0; border: 1px solid #e2e8f0; }
+.wb-blue { background: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 0.65em; color: #fff; font-weight: 700; transition: width 0.5s; }
+.wb-yellow { background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 0.65em; color: #fff; font-weight: 700; transition: width 0.5s; }
+
+/* 面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+.kv-item { display: flex; justify-content: space-between; font-size: 0.72em; margin-bottom: 5px; }
+.kv-label { color: #475569; }
+.kv-val { font-weight: 700; color: #1e293b; }
+.kv-ok { color: #16a34a; }
+.kv-warn { color: #d97706; }
+.kv-err { color: #dc2626; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 0.74em; line-height: 1.7; color: #475569; }
+.explain strong { color: #1e293b; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; transition: all 0.2s; }
+.btn-teal { background: #0f766e; color: #fff; }
+.btn-teal:hover { background: #0d6b63; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+.btn-gray:hover { background: #cbd5e1; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.pulsing { animation: pulse 1s infinite; }
+</style>
+</head>
+<body>
+<h2>🕸️ Istio 核心功能与使用场景</h2>
+<p class="subtitle">服务网格核心能力演示 · 结合 B环境 devops51.lan 实践</p>
+
+<div class="tabs" id="tabs"></div>
+
+<!-- S0: 总览 -->
+<div class="stage active" id="s0">
+  <div class="canvas">
+    <div class="canvas-title">Istio 核心功能总览</div>
+    <div class="feature-grid">
+      <div class="feature-card fc-blue">
+        <div class="fc-icon">⚖️</div>
+        <div class="fc-title">流量管理</div>
+        <div class="fc-desc">精确控制服务间流量权重、路由规则、负载均衡策略</div>
+      </div>
+      <div class="feature-card fc-orange">
+        <div class="fc-icon">🐤</div>
+        <div class="fc-title">金丝雀发布</div>
+        <div class="fc-desc">按权重分流，1% 到 100% 精确控制，结合 Argo Rollouts</div>
+      </div>
+      <div class="feature-card fc-red">
+        <div class="fc-icon">⚡</div>
+        <div class="fc-title">熔断限流</div>
+        <div class="fc-desc">自动熔断异常服务，防止雪崩，保护系统稳定性</div>
+      </div>
+      <div class="feature-card fc-teal">
+        <div class="fc-icon">🔒</div>
+        <div class="fc-title">mTLS 加密</div>
+        <div class="fc-desc">服务间自动双向 TLS 认证加密，零代码改动</div>
+      </div>
+      <div class="feature-card fc-purple">
+        <div class="fc-icon">🔭</div>
+        <div class="fc-title">可观测性</div>
+        <div class="fc-desc">全链路追踪、实时指标、Kiali 流量拓扑可视化</div>
+      </div>
+      <div class="feature-card fc-green">
+        <div class="fc-icon">🧪</div>
+        <div class="fc-title">故障注入</div>
+        <div class="fc-desc">模拟 HTTP 延迟/错误，验证系统容错能力</div>
+      </div>
+    </div>
+  </div>
+  <div class="canvas">
+    <div class="canvas-title">Istio 架构：控制面 + 数据面</div>
+    <div class="two-col">
+      <div class="arch">
+        <div class="arch-box ab-control">
+          <div class="arch-title">⚙️ 控制面（istiod）</div>
+          <div class="arch-detail">下发路由规则 · 分发证书 · 服务发现</div>
+        </div>
+        <div class="arch-arrow">↓ xDS 协议下发配置</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;width:100%">
+          <div class="arch-box ab-sidecar" style="max-width:200px">
+            <div class="arch-title">🔷 Envoy Sidecar</div>
+            <div class="arch-detail">拦截所有流量</div>
+          </div>
+          <div class="arch-box ab-sidecar" style="max-width:200px">
+            <div class="arch-title">🔷 Envoy Sidecar</div>
+            <div class="arch-detail">拦截所有流量</div>
+          </div>
+        </div>
+        <div class="arch-arrow">↓ 代理转发</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;width:100%">
+          <div class="arch-box ab-app" style="max-width:200px">
+            <div class="arch-title">📦 应用容器 A</div>
+            <div class="arch-detail">业务代码无感知</div>
+          </div>
+          <div class="arch-box ab-app" style="max-width:200px">
+            <div class="arch-title">📦 应用容器 B</div>
+            <div class="arch-detail">业务代码无感知</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">核心资源</div>
+          <div style="font-size:0.72em;line-height:2;color:#475569">
+            <div><strong>Gateway</strong> — 入口网关配置</div>
+            <div><strong>VirtualService</strong> — 路由规则</div>
+            <div><strong>DestinationRule</strong> — 流量策略</div>
+            <div><strong>ServiceEntry</strong> — 外部服务</div>
+            <div><strong>PeerAuthentication</strong> — mTLS策略</div>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">B环境信息</div>
+          <div style="font-size:0.7em;line-height:1.9;color:#475569">
+            <div>版本：Istio 1.24.3</div>
+            <div>VIP：10.20.50.50</div>
+            <div>域名：*.devops51.lan</div>
+            <div>Kiali：kiali.devops51.lan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>Istio 核心思想</strong>：把网络功能从业务代码中剥离出来，放到 Sidecar 代理（Envoy）里统一处理。应用代码只需专注业务逻辑，流量控制、安全、可观测性由 Istio 透明处理。
+  </div>
+</div>
+
+<!-- S1: 流量管理 -->
+<div class="stage" id="s1">
+  <div class="canvas">
+    <div class="canvas-title">流量管理：VirtualService + DestinationRule</div>
+    <div class="two-col">
+      <div>
+        <div style="font-size:0.72em;color:#475569;margin-bottom:8px">用户请求 → nginx.devops51.lan</div>
+        <div class="svc-row">
+          <div class="svc-box svc-gray">
+            <div class="svc-name">🌐 IngressGateway</div>
+            <div class="svc-tag">VIP 10.20.50.50</div>
+          </div>
+        </div>
+        <div style="text-align:center;color:#94a3b8;margin:4px">↓ VirtualService 路由</div>
+        <div style="font-size:0.7em;color:#475569;margin-bottom:4px">流量权重分配：</div>
+        <div class="weight-bar">
+          <div class="wb-blue" id="wb-stable" style="width:80%">stable 80%</div>
+          <div class="wb-yellow" id="wb-canary" style="width:20%">canary 20%</div>
+        </div>
+        <div class="svc-row" style="margin-top:8px">
+          <div class="svc-box svc-v1">
+            <div class="svc-name">nginx-stable</div>
+            <div class="svc-tag">v1 × 10 Pod</div>
+          </div>
+          <div class="svc-box svc-v2">
+            <div class="svc-name">nginx-canary</div>
+            <div class="svc-tag">v2 × 1 Pod</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <div style="font-size:0.7em;color:#475569;margin-bottom:4px">调整权重：</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button onclick="setWeight(100,0)" class="btn btn-gray" style="font-size:0.68em;padding:4px 10px">100/0</button>
+            <button onclick="setWeight(80,20)" class="btn btn-teal" style="font-size:0.68em;padding:4px 10px">80/20</button>
+            <button onclick="setWeight(50,50)" class="btn btn-gray" style="font-size:0.68em;padding:4px 10px">50/50</button>
+            <button onclick="setWeight(0,100)" class="btn btn-gray" style="font-size:0.68em;padding:4px 10px">0/100</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">VirtualService 配置</div>
+          <div style="font-size:0.65em;font-family:monospace;color:#475569;line-height:1.7;background:#f8fafc;padding:8px;border-radius:6px">
+            http:<br>
+            - route:<br>
+            &nbsp;&nbsp;- destination:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;host: nginx<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;subset: stable<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;weight: <span id="code-stable" style="color:#2563eb;font-weight:700">80</span><br>
+            &nbsp;&nbsp;- destination:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;host: nginx<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;subset: canary<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;weight: <span id="code-canary" style="color:#d97706;font-weight:700">20</span>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">与 K8s 副本数的区别</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.8">
+            <div>❌ 副本数控制：1/10Pod = 10%</div>
+            <div>✅ Istio 权重：任意精度，1个Pod可承接1%</div>
+            <div style="color:#0f766e;margin-top:4px">节省资源，精确控制</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>流量管理</strong>：通过 VirtualService 定义路由规则，DestinationRule 定义子集（subset）。Istio 可以做到 1% 粒度的流量分配，而不需要增加副本数。比如 1 个 canary Pod 承接 20% 流量，9 个 stable Pod 承接 80% 流量。
+  </div>
+</div>
+
+<!-- S2: 熔断限流 -->
+<div class="stage" id="s2">
+  <div class="canvas">
+    <div class="canvas-title">熔断保护：防止雪崩效应</div>
+    <div class="two-col">
+      <div>
+        <div class="svc-row">
+          <div class="svc-box svc-gray"><div class="svc-name">👤 用户请求</div></div>
+        </div>
+        <div style="text-align:center;color:#94a3b8;margin:4px">↓</div>
+        <div class="svc-row">
+          <div class="svc-box svc-ok" id="cb-gateway"><div class="svc-name">🌐 Gateway</div><div class="svc-tag">正常</div></div>
+        </div>
+        <div style="text-align:center;color:#94a3b8;margin:4px">↓</div>
+        <div class="svc-row">
+          <div class="svc-box svc-ok" id="cb-order"><div class="svc-name">🛒 订单服务</div><div class="svc-tag">正常</div></div>
+          <div class="svc-box svc-ok" id="cb-user"><div class="svc-name">👤 用户服务</div><div class="svc-tag">正常</div></div>
+        </div>
+        <div style="text-align:center;color:#94a3b8;margin:4px">↓</div>
+        <div class="svc-row">
+          <div class="svc-box svc-ok" id="cb-payment"><div class="svc-name">💳 支付服务</div><div class="svc-tag" id="cb-payment-tag">正常</div></div>
+          <div class="svc-box svc-ok" id="cb-db"><div class="svc-name">🗄️ 数据库</div><div class="svc-tag" id="cb-db-tag">正常</div></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <button onclick="cbFault()" class="btn btn-gray" style="font-size:0.68em;padding:4px 10px">💥 注入DB故障</button>
+          <button onclick="cbCircuit()" class="btn btn-teal" style="font-size:0.68em;padding:4px 10px">⚡ 触发熔断</button>
+          <button onclick="cbRecover()" class="btn btn-gray" style="font-size:0.68em;padding:4px 10px">✅ 故障恢复</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">熔断配置（DestinationRule）</div>
+          <div style="font-size:0.65em;font-family:monospace;color:#475569;line-height:1.7;background:#f8fafc;padding:8px;border-radius:6px">
+            outlierDetection:<br>
+            &nbsp;&nbsp;consecutive5xxErrors: 5<br>
+            &nbsp;&nbsp;interval: 10s<br>
+            &nbsp;&nbsp;baseEjectionTime: 30s<br>
+            &nbsp;&nbsp;maxEjectionPercent: 100
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">熔断状态</div>
+          <div class="kv-item"><span class="kv-label">支付服务</span><span class="kv-val" id="cb-status">正常</span></div>
+          <div class="kv-item"><span class="kv-label">错误率</span><span class="kv-val" id="cb-errrate">0%</span></div>
+          <div class="kv-item"><span class="kv-label">熔断器</span><span class="kv-val" id="cb-state">CLOSED</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>熔断保护</strong>：当支付服务连续出现 5 次 5xx 错误，Envoy 自动将其从负载均衡池移除（熔断打开），后续请求直接返回 503，不再等待超时。30秒后进入半开状态探测恢复，避免雪崩效应蔓延到其他服务。
+  </div>
+</div>
+
+<!-- S3: mTLS -->
+<div class="stage" id="s3">
+  <div class="canvas">
+    <div class="canvas-title">mTLS 双向认证加密</div>
+    <div class="two-col">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
+          <div style="text-align:center">
+            <div class="svc-box svc-ok" style="margin-bottom:4px"><div class="svc-name">📦 服务 A</div><div class="svc-tag">Envoy Sidecar</div></div>
+            <div style="font-size:0.62em;color:#0f766e">证书：a.ns.cluster.local</div>
+          </div>
+          <div style="text-align:center;flex:1;min-width:80px">
+            <div style="font-size:0.65em;color:#0f766e;margin-bottom:2px">🔒 TLS 握手</div>
+            <div style="height:2px;background:linear-gradient(90deg,#0f766e,#14b8a6);border-radius:1px;margin:4px 0"></div>
+            <div style="font-size:0.62em;color:#475569">互相验证证书</div>
+            <div style="height:2px;background:linear-gradient(90deg,#14b8a6,#0f766e);border-radius:1px;margin:4px 0"></div>
+            <div style="font-size:0.65em;color:#0f766e;margin-top:2px">🔐 加密传输</div>
+          </div>
+          <div style="text-align:center">
+            <div class="svc-box svc-ok" style="margin-bottom:4px"><div class="svc-name">📦 服务 B</div><div class="svc-tag">Envoy Sidecar</div></div>
+            <div style="font-size:0.62em;color:#0f766e">证书：b.ns.cluster.local</div>
+          </div>
+        </div>
+        <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px;font-size:0.72em;color:#0f766e">
+          <div style="font-weight:700;margin-bottom:6px">⚙️ istiod 证书管理</div>
+          <div>• 自动为每个服务颁发 SVID 证书</div>
+          <div>• 证书自动轮换，无需人工干预</div>
+          <div>• 基于 SPIFFE 标准身份</div>
+        </div>
+        <div style="margin-top:10px">
+          <div style="font-size:0.7em;font-weight:700;color:#475569;margin-bottom:6px">PeerAuthentication 配置：</div>
+          <div style="display:flex;gap:6px">
+            <div style="flex:1;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:6px;font-size:0.65em;text-align:center;color:#b91c1c">
+              <div style="font-weight:700">PERMISSIVE</div>
+              <div>明文+TLS都允许</div>
+              <div>（过渡期使用）</div>
+            </div>
+            <div style="flex:1;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px;font-size:0.65em;text-align:center;color:#15803d">
+              <div style="font-weight:700">STRICT</div>
+              <div>仅允许 mTLS</div>
+              <div>（生产推荐）</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">mTLS vs 普通 TLS</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.9">
+            <div>普通 TLS：客户端验证服务端</div>
+            <div>mTLS：双方互相验证身份</div>
+            <div style="color:#0f766e;margin-top:4px">✅ 防止中间人攻击</div>
+            <div style="color:#0f766e">✅ 服务身份认证</div>
+            <div style="color:#0f766e">✅ 零代码改动</div>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">Kiali 验证</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.9">
+            <div>🔒 服务间连接显示锁图标</div>
+            <div>表示 mTLS 已启用</div>
+            <div>访问：kiali.devops51.lan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>mTLS（双向 TLS）</strong>：istiod 自动为每个 Pod 颁发证书，Envoy Sidecar 在建立连接时自动完成双向证书验证和加密。应用代码完全不需要任何改动，服务间通信自动加密，即使内网流量也无法被窃听。
+  </div>
+</div>
+
+<!-- S4: 可观测性 -->
+<div class="stage" id="s4">
+  <div class="canvas">
+    <div class="canvas-title">可观测性：Metrics + Tracing + Kiali</div>
+    <div class="two-col">
+      <div>
+        <div style="font-size:0.72em;color:#475569;margin-bottom:8px">Envoy 自动采集，无需修改应用代码</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;min-width:120px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:8px;font-size:0.7em;color:#7e22ce">
+            <div style="font-weight:700;margin-bottom:4px">📊 Prometheus 指标</div>
+            <div>• 请求成功率</div>
+            <div>• P50/P99 延迟</div>
+            <div>• 流量 QPS</div>
+            <div>• 连接数</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px;font-size:0.7em;color:#c2410c">
+            <div style="font-weight:700;margin-bottom:4px">🔭 链路追踪</div>
+            <div>• Jaeger/Zipkin</div>
+            <div>• 请求全链路</div>
+            <div>• 耗时分析</div>
+            <div>• 依赖关系</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;font-size:0.7em;color:#15803d">
+            <div style="font-weight:700;margin-bottom:4px">🕸️ Kiali 拓扑</div>
+            <div>• 服务依赖图</div>
+            <div>• 流量实时动画</div>
+            <div>• 健康状态</div>
+            <div>• 配置验证</div>
+          </div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px">
+          <div style="font-size:0.7em;font-weight:700;color:#475569;margin-bottom:6px">Istio 自动注入的指标标签：</div>
+          <div style="font-size:0.65em;font-family:monospace;color:#475569;line-height:1.8">
+            istio_requests_total{<br>
+            &nbsp;&nbsp;source_workload="nginx",<br>
+            &nbsp;&nbsp;destination_service="payment",<br>
+            &nbsp;&nbsp;response_code="200",<br>
+            &nbsp;&nbsp;source_version="v1"<br>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">实时指标示例</div>
+          <div class="kv-item"><span class="kv-label">请求成功率</span><span class="kv-val kv-ok">99.8%</span></div>
+          <div class="kv-item"><span class="kv-label">P50 延迟</span><span class="kv-val">12ms</span></div>
+          <div class="kv-item"><span class="kv-label">P99 延迟</span><span class="kv-val kv-warn">85ms</span></div>
+          <div class="kv-item"><span class="kv-label">QPS</span><span class="kv-val">1,240/s</span></div>
+          <div class="kv-item"><span class="kv-label">活跃连接</span><span class="kv-val">342</span></div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">访问地址</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.9">
+            <div>Kiali: kiali.devops51.lan</div>
+            <div>Prometheus: prometheus.devops51.lan</div>
+            <div>账号: admin / admin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>可观测性</strong>：Envoy Sidecar 自动采集所有服务间流量的指标，不需要在应用代码中埋点。Kiali 读取 Prometheus 数据，实时展示服务拓扑图、流量动画、健康状态，是排查微服务问题的核心工具。
+  </div>
+</div>
+
+<!-- S5: 故障注入 -->
+<div class="stage" id="s5">
+  <div class="canvas">
+    <div class="canvas-title">故障注入：验证系统容错能力</div>
+    <div class="two-col">
+      <div>
+        <div style="font-size:0.72em;color:#475569;margin-bottom:8px">向 nginx.devops51.lan 注入故障，验证上游服务容错</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;font-size:0.7em;color:#c2410c">
+            <div style="font-weight:700;margin-bottom:4px">⏱️ 延迟注入</div>
+            <div style="font-family:monospace;background:#fff;padding:4px;border-radius:4px;font-size:0.9em;margin-bottom:4px">
+              fault:<br>
+              &nbsp;delay:<br>
+              &nbsp;&nbsp;percentage: 50%<br>
+              &nbsp;&nbsp;fixedDelay: 3s
+            </div>
+            <div>50% 的请求延迟 3 秒</div>
+          </div>
+          <div style="flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:0.7em;color:#b91c1c">
+            <div style="font-weight:700;margin-bottom:4px">💥 错误注入</div>
+            <div style="font-family:monospace;background:#fff;padding:4px;border-radius:4px;font-size:0.9em;margin-bottom:4px">
+              fault:<br>
+              &nbsp;abort:<br>
+              &nbsp;&nbsp;percentage: 30%<br>
+              &nbsp;&nbsp;httpStatus: 503
+            </div>
+            <div>30% 的请求返回 503</div>
+          </div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;font-size:0.7em;color:#15803d">
+          <div style="font-weight:700;margin-bottom:4px">✅ 验证目标</div>
+          <div>• 超时配置是否生效</div>
+          <div>• 重试策略是否正确</div>
+          <div>• 熔断是否触发</div>
+          <div>• 降级响应是否正常</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-card">
+          <div class="panel-title">与 Chaos Mesh 区别</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.9">
+            <div>Istio：L7 HTTP 层模拟</div>
+            <div>应用进程正常运行</div>
+            <div>低风险，随时撤销</div>
+            <div style="margin-top:4px">Chaos Mesh：系统层真实故障</div>
+            <div>Pod 真的崩溃</div>
+            <div>验证基础设施韧性</div>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-title">流量镜像</div>
+          <div style="font-size:0.7em;color:#475569;line-height:1.9">
+            <div>生产流量 → v1（正常）</div>
+            <div>同时复制 → v2（测试）</div>
+            <div>v2 响应不影响用户</div>
+            <div style="color:#0f766e;margin-top:4px">✅ 零风险验证新版本</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>故障注入</strong>：在不修改应用代码的情况下，通过 VirtualService 配置向指定服务注入延迟或错误，验证上游服务的容错能力。是混沌工程的轻量级实践，适合开发测试阶段验证超时、重试、熔断配置是否正确。
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-gray" onclick="goStage(0)">↺ 重置</button>
+  <button class="btn btn-teal" id="btnPrev" onclick="prev()" disabled>← 上一步</button>
+  <button class="btn btn-teal" id="btnNext" onclick="next()">下一步 →</button>
+</div>
+
+<script>
+const stages = ['总览', '流量管理', '熔断限流', 'mTLS加密', '可观测性', '故障注入'];
+let cur = 0;
+
+document.getElementById('tabs').innerHTML = stages.map((s,i) =>
+  `<div class="tab ${i===0?'active':''}" onclick="goStage(${i})">${s}</div>`).join('');
+
+function goStage(n) {
+  cur = n;
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.getElementById('btnPrev').disabled = n===0;
+  document.getElementById('btnNext').disabled = n===stages.length-1;
+}
+function next() { if(cur<stages.length-1) goStage(cur+1); }
+function prev() { if(cur>0) goStage(cur-1); }
+
+function setWeight(s, c) {
+  document.getElementById('wb-stable').style.width = s + '%';
+  document.getElementById('wb-stable').textContent = s > 8 ? 'stable ' + s + '%' : '';
+  document.getElementById('wb-canary').style.width = c + '%';
+  document.getElementById('wb-canary').textContent = c > 8 ? 'canary ' + c + '%' : '';
+  document.getElementById('code-stable').textContent = s;
+  document.getElementById('code-canary').textContent = c;
+}
+
+function cbFault() {
+  const db = document.getElementById('cb-db');
+  db.className = 'svc-box svc-err pulsing';
+  document.getElementById('cb-db-tag').textContent = '慢查询！';
+  const payment = document.getElementById('cb-payment');
+  payment.className = 'svc-box svc-warn pulsing';
+  document.getElementById('cb-payment-tag').textContent = '等待超时...';
+  document.getElementById('cb-status').textContent = '异常';
+  document.getElementById('cb-status').className = 'kv-val kv-warn';
+  document.getElementById('cb-errrate').textContent = '45%';
+  document.getElementById('cb-errrate').className = 'kv-val kv-warn';
+  document.getElementById('cb-state').textContent = 'CLOSED';
+}
+
+function cbCircuit() {
+  const payment = document.getElementById('cb-payment');
+  payment.className = 'svc-box svc-err';
+  payment.querySelector('.svc-name').textContent = '💳 支付服务';
+  document.getElementById('cb-payment-tag').textContent = '⚡ 已熔断';
+  document.getElementById('cb-status').textContent = '熔断打开';
+  document.getElementById('cb-status').className = 'kv-val kv-err';
+  document.getElementById('cb-errrate').textContent = '0%（快速失败）';
+  document.getElementById('cb-errrate').className = 'kv-val kv-ok';
+  document.getElementById('cb-state').textContent = 'OPEN';
+  document.getElementById('cb-state').className = 'kv-val kv-err';
+}
+
+function cbRecover() {
+  ['cb-gateway','cb-order','cb-user','cb-payment','cb-db'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'svc-box svc-ok';
+  });
+  document.getElementById('cb-payment-tag').textContent = '已恢复';
+  document.getElementById('cb-db-tag').textContent = '正常';
+  document.getElementById('cb-status').textContent = '正常';
+  document.getElementById('cb-status').className = 'kv-val kv-ok';
+  document.getElementById('cb-errrate').textContent = '0%';
+  document.getElementById('cb-errrate').className = 'kv-val kv-ok';
+  document.getElementById('cb-state').textContent = 'CLOSED';
+  document.getElementById('cb-state').className = 'kv-val kv-ok';
+}
+</script>
+</body>
+</html>
+EOF
+echo "Done

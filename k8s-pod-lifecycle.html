@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s Pod 生命周期</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.15em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.steps-nav { display: flex; justify-content: center; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.snav { padding: 5px 12px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: 64748b; cursor: pointer; font-size: 0.7em; font-weight: 600; transition: all 0.2s; }
+.snav.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.snav:hover:not(.active) { border-color: #7c3aed; color: #7c3aed; }
+
+.main { display: grid; grid-template-columns: 1fr 260px; gap: 12px; max-width: 980px; margin: 0 auto; }
+
+/* 时间线 */
+.timeline { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+.tl-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; font-weight: 700; }
+
+.tl-steps { display: flex; flex-direction: column; gap: 0; }
+.tl-step { display: flex; gap: 12px; position: relative; }
+.tl-step:not(:last-child)::after { content: ''; position: absolute; left: 16px; top: 36px; bottom: 0; width: 2px; background: #e2e8f0; z-index: 0; }
+.tl-step.done::after { background: #7c3aed; }
+.tl-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85em; flex-shrink: 0; border: 3px solid #e2e8f0; background: #fff; z-index: 1; transition: all 0.3s; }
+.tl-dot.active { border-color: #7c3aed; background: #7c3aed; color: #fff; box-shadow: 0 0 0 4px rgba(124,58,237,0.15); }
+.tl-dot.done { border-color: #7c3aed; background: #ede9fe; }
+.tl-dot.error { border-color: #ef4444; background: #fef2f2; }
+.tl-content { flex: 1; padding-bottom: 16px; }
+.tl-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; min-height: 32px; }
+.tl-name { font-size: 0.8em; font-weight: 700; }
+.tl-badge { padding: 1px 8px; border-radius: 10px; font-size: 0.62em; font-weight: 700; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+.badge-running { background: #dbeafe; color: #1d4ed8; }
+.badge-ok { background: #dcfce7; color: #15803d; }
+.badge-err { background: #fef2f2; color: #b91c1c; }
+.badge-term { background: #f1f5f9; color: #475569; }
+.tl-desc { font-size: 0.68em; color: #64748b; line-height: 1.6; }
+.tl-code { font-size: 0.63em; font-family: monospace; background: #f8fafc; padding: 4px 8px; border-radius: 4px; color: #475569; margin-top: 4px; display: inline-block; }
+
+/* 右侧面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+
+/* Pod 状态可视化 */
+.pod-visual { border-radius: 10px; padding: 12px; border: 2px solid; text-align: center; transition: all 0.4s; }
+.pod-icon { font-size: 2em; margin-bottom: 4px; }
+.pod-status { font-size: 0.8em; font-weight: 700; margin-bottom: 2px; }
+.pod-phase { font-size: 0.65em; opacity: 0.8; }
+.pv-pending { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+.pv-init { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.pv-running { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.pv-error { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+.pv-term { background: #f8fafc; border-color: #94a3b8; color: #475569; }
+
+/* 容器状态 */
+.container-list { display: flex; flex-direction: column; gap: 5px; }
+.container-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.7em; padding: 5px 8px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; }
+.ci-name { font-weight: 600; color: #1e293b; }
+.ci-state { font-size: 0.9em; font-weight: 700; }
+.ci-ok { color: #16a34a; }
+.ci-wait { color: #d97706; }
+.ci-err { color: #dc2626; }
+.ci-na { color: #94a3b8; }
+
+/* 事件日志 */
+.log { max-height: 140px; overflow-y: auto; }
+.log-item { font-size: 0.66em; padding: 3px 0; border-bottom: 1px solid #f1f5f9; display: flex; gap: 5px; }
+.log-time { color: #94a3b8; flex-shrink: 0; font-family: monospace; }
+.log-ok { color: #16a34a; }
+.log-warn { color: #d97706; }
+.log-err { color: #dc2626; }
+.log-info { color: #2563eb; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.73em; line-height: 1.7; color: #475569; max-width: 980px; margin-left: auto; margin-right: auto; }
+.explain strong { color: #1e293b; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; transition: all 0.2s; }
+.btn-purple { background: #7c3aed; color: #fff; }
+.btn-purple:hover { background: #6d28d9; }
+.btn-red { background: #ef4444; color: #fff; }
+.btn-red:hover { background: #dc2626; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+.btn-gray:hover { background: #cbd5e1; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+.spinning { display: inline-block; animation: spin 1s linear infinite; }
+</style>
+
+</head>
+<body>
+<h2>🔄 K8s Pod 生命周期</h2>
+<p class="subtitle">从创建到终止的完整状态流转 · 正常流程 + 异常场景</p>
+
+<div class="steps-nav" id="stepsNav"></div>
+
+<div class="main">
+  <div class="timeline">
+    <div class="tl-title" id="tlTitle">Pod 生命周期时间线</div>
+    <div class="tl-steps" id="tlSteps"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-card">
+      <div class="panel-title">Pod 状态</div>
+      <div class="pod-visual pv-pending" id="podVisual">
+        <div class="pod-icon" id="podIcon">⏳</div>
+        <div class="pod-status" id="podStatus">等待创建</div>
+        <div class="pod-phase" id="podPhase">Phase: -</div>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-title">容器状态</div>
+      <div class="container-list" id="containerList">
+        <div class="container-item"><span class="ci-name">init-container</span><span class="ci-state ci-na">-</span></div>
+        <div class="container-item"><span class="ci-name">app-container</span><span class="ci-state ci-na">-</span></div>
+        <div class="container-item"><span class="ci-name">sidecar(envoy)</span><span class="ci-state ci-na">-</span></div>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-title">事件日志</div>
+      <div class="log" id="logPanel">
+        <div class="log-item"><span class="log-time">00:00</span><span class="log-info">等待开始...</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="explain" id="explainBox">
+  <strong>Pod 生命周期</strong>：Pod 从创建到终止经历多个阶段，每个阶段都有对应的状态和事件。点击步骤或使用控制按钮逐步观察完整流程。
+</div>
+
+<div class="controls">
+  <button class="btn btn-gray" onclick="reset()">↺ 重置</button>
+  <button class="btn btn-purple" id="btnNext" onclick="nextStep()">▶ 下一步</button>
+  <button class="btn btn-red" id="btnError" onclick="injectError()">💥 模拟异常</button>
+</div>
+
+<script>
+const STEPS = [
+  {
+    label: '创建请求',
+    dot: '1', dotClass: 'active',
+    badge: 'Pending', badgeClass: 'badge-pending',
+    desc: 'kubectl apply 提交 YAML → API Server 验证 → 写入 etcd',
+    code: 'kubectl apply -f pod.yaml',
+    podClass: 'pv-pending', podIcon: '⏳', podStatus: 'Pending', podPhase: 'Phase: Pending',
+    containers: ['-', '-', '-'],
+    containerClass: ['ci-na', 'ci-na', 'ci-na'],
+    log: ['Pod 对象写入 etcd', 'Scheduler 检测到未调度 Pod'],
+    explain: '<strong>第1步：创建请求</strong>：kubectl 将 YAML 提交给 API Server，经过准入控制（Admission）验证后写入 etcd。此时 Pod 处于 Pending 状态，nodeName 为空。'
+  },
+  {
+    label: '调度',
+    dot: '2', dotClass: 'active',
+    badge: 'Pending', badgeClass: 'badge-pending',
+    desc: 'Scheduler 过滤 → 评分 → 选定节点 → 写入 nodeName=node72',
+    code: 'Pod.spec.nodeName = "node72"',
+    podClass: 'pv-pending', podIcon: '🎯', podStatus: 'Pending（已调度）', podPhase: 'Phase: Pending',
+    containers: ['等待', '-', '-'],
+    containerClass: ['ci-wait', 'ci-na', 'ci-na'],
+    log: ['Scheduler 开始过滤节点', '过滤结果：node72/node73 通过', '评分：node72(92) > node73(75)', '绑定到 node72'],
+    explain: '<strong>第2步：调度</strong>：Scheduler 通过过滤（资源/污点/亲和性）和评分（资源均衡/镜像本地性）选出最优节点，将 nodeName 写入 etcd。node72 的 kubelet 通过 Watch 发现分配给自己的 Pod。'
+  },
+  {
+    label: '拉取镜像',
+    dot: '3', dotClass: 'active',
+    badge: 'Pending', badgeClass: 'badge-pending',
+    desc: 'kubelet 调用 containerd → 从 Harbor 拉取镜像',
+    code: 'harbor.devops.local:7581/devops/nginx:alpine',
+    podClass: 'pv-init', podIcon: '📦', podStatus: 'Pending（拉镜像）', podPhase: 'Phase: Pending',
+    containers: ['拉取中...', '拉取中...', '拉取中...'],
+    containerClass: ['ci-wait', 'ci-wait', 'ci-wait'],
+    log: ['kubelet 开始处理 Pod', 'containerd 拉取镜像...', '镜像拉取完成（本地缓存）'],
+    explain: '<strong>第3步：拉取镜像</strong>：kubelet 通知 containerd 拉取所需镜像。若镜像已在节点本地缓存，则跳过下载（ImagePullPolicy: IfNotPresent）。镜像拉取失败会导致 ImagePullBackOff 状态。'
+  },
+  {
+    label: 'Init容器',
+    dot: '4', dotClass: 'active',
+    badge: 'Init', badgeClass: 'badge-pending',
+    desc: 'Init 容器顺序执行，必须全部成功才能启动主容器',
+    code: 'initContainers 按顺序执行',
+    podClass: 'pv-init', podIcon: '🔧', podStatus: 'Init:0/1', podPhase: 'Phase: Pending',
+    containers: ['Running ✅', 'Waiting', 'Waiting'],
+    containerClass: ['ci-ok', 'ci-wait', 'ci-wait'],
+    log: ['init-container 启动', 'init-container: 检查依赖服务...', 'init-container: 初始化配置完成', 'init-container 退出码: 0 ✅'],
+    explain: '<strong>第4步：Init 容器</strong>：Init 容器在主容器启动前顺序执行，常用于等待依赖服务就绪、初始化配置文件、数据库迁移等。任何一个 Init 容器失败，Pod 会重启该容器直到成功。'
+  },
+  {
+    label: '容器启动',
+    dot: '5', dotClass: 'active',
+    badge: 'Running', badgeClass: 'badge-running',
+    desc: '主容器和 Sidecar 启动，执行 postStart 钩子',
+    code: 'lifecycle.postStart → 执行',
+    podClass: 'pv-running', podIcon: '🚀', podStatus: 'Running（启动中）', podPhase: 'Phase: Running',
+    containers: ['完成 ✅', 'Starting...', 'Starting...'],
+    containerClass: ['ci-ok', 'ci-wait', 'ci-wait'],
+    log: ['app-container 启动', 'envoy sidecar 注入启动', 'postStart 钩子执行', 'CNI 配置网络 10.244.1.5/24'],
+    explain: '<strong>第5步：容器启动</strong>：Init 容器完成后，所有主容器并行启动。kubelet 执行 postStart 生命周期钩子，CNI 插件配置 Pod 网络（分配 IP、设置路由）。'
+  },
+  {
+    label: '就绪检查',
+    dot: '6', dotClass: 'active',
+    badge: 'Running', badgeClass: 'badge-running',
+    desc: 'ReadinessProbe 通过后，Pod 加入 Service 负载均衡',
+    code: 'readinessProbe: httpGet /healthz',
+    podClass: 'pv-running', podIcon: '✅', podStatus: 'Running（Ready）', podPhase: 'Phase: Running',
+    containers: ['完成 ✅', 'Running ✅', 'Running ✅'],
+    containerClass: ['ci-ok', 'ci-ok', 'ci-ok'],
+    log: ['ReadinessProbe 开始检测', 'GET /healthz → 200 OK', 'Pod Ready: 2/2 容器就绪', 'Pod 加入 Service Endpoints'],
+    explain: '<strong>第6步：就绪检查</strong>：kubelet 定期执行 ReadinessProbe（HTTP/TCP/Exec）。探针通过后，Pod 被标记为 Ready，加入 Service 的 Endpoints，开始接收流量。探针失败则从 Endpoints 移除，不再接收流量。'
+  },
+  {
+    label: '健康运行',
+    dot: '7', dotClass: 'active',
+    badge: 'Running', badgeClass: 'badge-ok',
+    desc: 'LivenessProbe 持续检测，异常时自动重启容器',
+    code: 'livenessProbe: 每10秒检测一次',
+    podClass: 'pv-running', podIcon: '💚', podStatus: 'Running（Healthy）', podPhase: 'Phase: Running',
+    containers: ['完成 ✅', 'Running ✅', 'Running ✅'],
+    containerClass: ['ci-ok', 'ci-ok', 'ci-ok'],
+    log: ['LivenessProbe 检测正常', 'LivenessProbe 检测正常', '服务正常运行中...', 'ReadinessProbe 持续通过'],
+    explain: '<strong>第7步：健康运行</strong>：Pod 正常运行阶段。kubelet 持续执行 LivenessProbe，若探针失败超过 failureThreshold 次，kubelet 杀掉容器并重启（RestartPolicy 决定是否重启）。同时持续执行 ReadinessProbe 控制流量接入。'
+  },
+  {
+    label: '优雅终止',
+    dot: '8', dotClass: 'active',
+    badge: 'Terminating', badgeClass: 'badge-term',
+    desc: 'SIGTERM → preStop 钩子 → 等待 → SIGKILL（30s超时）',
+    code: 'terminationGracePeriodSeconds: 30',
+    podClass: 'pv-term', podIcon: '🛑', podStatus: 'Terminating', podPhase: 'Phase: Running→终止',
+    containers: ['完成 ✅', 'Terminating...', 'Terminating...'],
+    containerClass: ['ci-ok', 'ci-wait', 'ci-wait'],
+    log: ['收到 SIGTERM 信号', 'preStop 钩子执行（排水）', '从 Service Endpoints 移除', '等待优雅关闭（最多30s）', '容器正常退出'],
+    explain: '<strong>第8步：优雅终止</strong>：删除 Pod 时 kubelet 先从 Endpoints 移除 Pod（停止流量），再发送 SIGTERM，执行 preStop 钩子，等待 terminationGracePeriodSeconds（默认30s），超时后强制 SIGKILL。'
+  }
+];
+
+const ERROR_STEPS = [
+  {
+    label: 'CrashLoopBackOff',
+    dot: '!', dotClass: 'error',
+    badge: 'Error', badgeClass: 'badge-err',
+    desc: '容器持续崩溃，kubelet 按退避策略重启（10s→20s→40s...）',
+    code: 'kubectl describe pod → Exit Code: 1',
+    podClass: 'pv-error', podIcon: '💥', podStatus: 'CrashLoopBackOff', podPhase: 'Phase: Running',
+    containers: ['完成 ✅', 'CrashLoop ❌', 'Running ✅'],
+    containerClass: ['ci-ok', 'ci-err', 'ci-ok'],
+    log: ['容器启动失败，退出码: 1', '等待10秒后重启...', '容器再次启动失败', '等待20秒后重启...', 'Back-off restarting failed container'],
+    explain: '<strong>CrashLoopBackOff</strong>：容器启动后立即崩溃，kubelet 按指数退避策略重启（10s→20s→40s→5min），最大等待5分钟。排查方法：kubectl logs --previous 查看上次崩溃日志。'
+  },
+  {
+    label: 'OOMKilled',
+    dot: '!', dotClass: 'error',
+    badge: 'OOMKilled', badgeClass: 'badge-err',
+    desc: '内存超过 Limit，内核 OOM Killer 强制杀死进程',
+    code: 'Exit Code: 137 (OOM)',
+    podClass: 'pv-error', podIcon: '🧠', podStatus: 'OOMKilled', podPhase: 'Phase: Running',
+    containers: ['完成 ✅', 'OOMKilled ❌', 'Running ✅'],
+    containerClass: ['ci-ok', 'ci-err', 'ci-ok'],
+    log: ['内存使用接近 Limit', '内存使用超过 Limit 512Mi', 'OOM Killer 触发！', '容器被强制杀死 (Exit 137)', 'kubelet 重启容器...'],
+    explain: '<strong>OOMKilled（退出码137）</strong>：容器内存超过 resources.limits.memory，Linux 内核 OOM Killer 强制杀死进程。解决方案：增大 memory limit 或优化应用内存使用。'
+  },
+  {
+    label: 'ImagePullBackOff',
+    dot: '!', dotClass: 'error',
+    badge: 'Error', badgeClass: 'badge-err',
+    desc: '镜像拉取失败，Harbor 认证错误或镜像不存在',
+    code: 'Failed to pull image: 401 Unauthorized',
+    podClass: 'pv-error', podIcon: '📦', podStatus: 'ImagePullBackOff', podPhase: 'Phase: Pending',
+    containers: ['拉取失败 ❌', '等待', '等待'],
+    containerClass: ['ci-err', 'ci-na', 'ci-na'],
+    log: ['开始拉取镜像...', 'Failed: 401 Unauthorized', '等待退避重试...', 'Back-off pulling image'],
+    explain: '<strong>ImagePullBackOff</strong>：镜像拉取失败，常见原因：Harbor 认证失败（需要 imagePullSecrets）、镜像 tag 不存在、网络不通。检查：kubectl describe pod 查看 Events。'
+  }
+];
+
+let curStep = 0;
+let isError = false;
+let logs = [];
+let allSteps = [...STEPS];
+
+function addLog(msgs) {
+  const t = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  msgs.forEach(m => logs.unshift({t, m,
+    ok: m.includes('✅') || m.includes('完成') || m.includes('正常'),
+    err: m.includes('❌') || m.includes('失败') || m.includes('OOM') || m.includes('Crash'),
+    warn: m.includes('等待') || m.includes('重试')
+  }));
+  document.getElementById('logPanel').innerHTML = logs.slice(0,15).map(l =>
+    `<div class="log-item"><span class="log-time">${l.t}</span><span class="log-${l.err?'err':l.warn?'warn':l.ok?'ok':'info'}">${l.m}</span></div>`
+  ).join('');
+}
+
+function renderStep(n) {
+  const s = allSteps[n];
+
+  // 时间线
+  document.getElementById('tlTitle').textContent = isError ? '异常场景分析' : 'Pod 生命周期时间线';
+  document.getElementById('tlSteps').innerHTML = allSteps.map((step, i) => `
+    <div class="tl-step ${i < n ? 'done' : ''}">
+      <div class="tl-dot ${i === n ? step.dotClass : i < n ? 'done' : ''}">${i < n ? '✓' : step.dot}</div>
+      <div class="tl-content">
+        <div class="tl-header">
+          <span class="tl-name" style="color:${i===n?'#7c3aed':'#1e293b'}">${step.label}</span>
+          ${i===n ? `<span class="tl-badge ${step.badgeClass}">${step.badge}</span>` : ''}
+        </div>
+        ${i===n ? `<div class="tl-desc">${step.desc}</div><div class="tl-code">${step.code}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Pod 状态
+  const pv = document.getElementById('podVisual');
+  pv.className = 'pod-visual ' + s.podClass;
+  document.getElementById('podIcon').textContent = s.podIcon;
+  document.getElementById('podStatus').textContent = s.podStatus;
+  document.getElementById('podPhase').textContent = s.podPhase;
+
+  // 容器状态
+  const names = ['init-container', 'app-container', 'sidecar(envoy)'];
+  document.getElementById('containerList').innerHTML = names.map((name, i) => `
+    <div class="container-item">
+      <span class="ci-name">${name}</span>
+      <span class="ci-state ${s.containerClass[i]}">${s.containers[i]}</span>
+    </div>
+  `).join('');
+
+  // 导航
+  document.getElementById('stepsNav').innerHTML = allSteps.map((step, i) =>
+    `<button class="snav ${i===n?'active':''}" onclick="goStep(${i})">${step.label}</button>`
+  ).join('');
+
+  addLog(s.log);
+  document.getElementById('explainBox').innerHTML = s.explain;
+  document.getElementById('btnNext').disabled = n >= allSteps.length - 1;
+}
+
+function goStep(n) { curStep = n; renderStep(n); }
+function nextStep() { if(curStep < allSteps.length-1) { curStep++; renderStep(curStep); } }
+
+function injectError() {
+  isError = true;
+  allSteps = ERROR_STEPS;
+  curStep = 0;
+  logs = [];
+  renderStep(0);
+  document.getElementById('btnError').textContent = '下一个异常';
+  document.getElementById('btnNext').disabled = false;
+}
+
+function reset() {
+  isError = false;
+  allSteps = [...STEPS];
+  curStep = 0;
+  logs = [];
+  document.getElementById('btnError').textContent = '💥 模拟异常';
+  renderStep(0);
+}
+
+reset();
+</script>
+
+</body>
+</html>

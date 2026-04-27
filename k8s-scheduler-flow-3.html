@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s 调度原理动图</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.1em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 6px 14px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.73em; font-weight: 600; transition: all 0.2s; }
+.tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+.stage { display: none; max-width: 960px; margin: 0 auto; }
+.stage.active { display: block; }
+
+.main { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: 700; }
+
+/* 组件 */
+.flow { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.component { border-radius: 10px; padding: 10px 14px; text-align: center; border: 2px solid; width: 100%; max-width: 480px; transition: all 0.4s; }
+.comp-title { font-size: 0.78em; font-weight: 700; margin-bottom: 3px; }
+.comp-detail { font-size: 0.65em; opacity: 0.8; }
+.arrow { color: #94a3b8; font-size: 1.1em; text-align: center; }
+.arrow.active { color: #2563eb; }
+
+.c-api { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.c-scheduler { background: #faf5ff; border-color: #a855f7; color: #7e22ce; }
+.c-etcd { background: #fff7ed; border-color: #f97316; color: #c2410c; }
+.c-kubelet { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.c-node { background: #f8fafc; border-color: #94a3b8; color: #475569; }
+.c-highlight { box-shadow: 0 0 0 3px rgba(37,99,235,0.3); transform: scale(1.02); }
+
+/* 节点资源 */
+.nodes-grid { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.node-box { border-radius: 8px; padding: 8px 12px; text-align: center; border: 2px solid; min-width: 100px; transition: all 0.3s; }
+.node-ok { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.node-selected { background: #dbeafe; border-color: #2563eb; color: #1d4ed8; box-shadow: 0 0 0 3px rgba(37,99,235,0.3); }
+.node-full { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+.node-name { font-size: 0.75em; font-weight: 700; margin-bottom: 3px; }
+.node-res { font-size: 0.62em; }
+.pod-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2563eb; margin: 1px; }
+.pod-dot.new { background: #f59e0b; animation: pulse 0.8s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* 过滤评分 */
+.filter-list { display: flex; flex-direction: column; gap: 4px; }
+.filter-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.72em; padding: 4px 8px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; }
+.filter-pass { color: #16a34a; font-weight: 700; }
+.filter-fail { color: #dc2626; font-weight: 700; }
+.score-bar { display: flex; gap: 3px; align-items: center; font-size: 0.72em; padding: 4px 8px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; }
+.score-fill { height: 6px; border-radius: 3px; background: #2563eb; transition: width 0.5s; }
+.score-bg { width: 80px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+
+/* 右侧面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+.log { max-height: 160px; overflow-y: auto; }
+.log-item { font-size: 0.67em; padding: 3px 0; border-bottom: 1px solid #f1f5f9; display: flex; gap: 5px; }
+.log-time { color: #94a3b8; flex-shrink: 0; }
+.log-ok { color: #16a34a; }
+.log-warn { color: #d97706; }
+.log-info { color: #2563eb; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-top: 10px; font-size: 0.74em; line-height: 1.7; color: #475569; }
+.explain strong { color: #1e293b; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; transition: all 0.2s; }
+.btn-primary { background: #2563eb; color: #fff; }
+.btn-primary:hover { background: #1d4ed8; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+.btn-gray:hover { background: #cbd5e1; }
+</style>
+
+</head>
+<body>
+<h2>⚙️ K8s 调度原理动图</h2>
+<p class="subtitle">从 Pod 创建到节点绑定的完整调度流程</p>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="stage active" id="s0">
+  <div class="main">
+    <div class="canvas">
+      <div class="canvas-title">调度流程图</div>
+      <div class="flow">
+        <div class="component c-api" id="c-api"><div class="comp-title">🌐 API Server</div><div class="comp-detail">接收 Pod 创建请求，写入 etcd</div></div>
+        <div class="arrow">↓</div>
+        <div class="component c-scheduler" id="c-scheduler"><div class="comp-title">🎯 Scheduler</div><div class="comp-detail">Watch API Server，发现未调度 Pod</div></div>
+        <div class="arrow">↓ 过滤（Filter）</div>
+        <div class="nodes-grid" id="nodes0">
+          <div class="node-box node-ok"><div class="node-name">node72</div><div class="node-res">CPU: 2核可用<br>MEM: 4GB可用</div></div>
+          <div class="node-box node-ok"><div class="node-name">node73</div><div class="node-res">CPU: 1核可用<br>MEM: 2GB可用</div></div>
+          <div class="node-box node-ok"><div class="node-name">node74</div><div class="node-res">CPU: 3核可用<br>MEM: 6GB可用</div></div>
+        </div>
+        <div class="arrow">↓ 评分（Score）→ 绑定（Bind）</div>
+        <div class="component c-etcd" id="c-etcd"><div class="comp-title">🗄️ etcd</div><div class="comp-detail">写入调度结果：Pod → node74</div></div>
+        <div class="arrow">↓</div>
+        <div class="component c-kubelet" id="c-kubelet"><div class="comp-title">🤖 kubelet（node74）</div><div class="comp-detail">Watch API Server，拉取镜像，启动容器</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">调度阶段</div>
+        <div style="font-size:0.72em;line-height:1.8;color:#475569">
+          <div>1️⃣ <strong>过滤（Filter）</strong></div>
+          <div style="color:#64748b;font-size:0.9em;margin-bottom:6px">排除不满足条件的节点</div>
+          <div>2️⃣ <strong>评分（Score）</strong></div>
+          <div style="color:#64748b;font-size:0.9em;margin-bottom:6px">对剩余节点打分</div>
+          <div>3️⃣ <strong>绑定（Bind）</strong></div>
+          <div style="color:#64748b;font-size:0.9em">选最高分节点，写入 etcd</div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">事件日志</div>
+        <div class="log" id="log0">
+          <div class="log-item"><span class="log-time">00:00</span><span class="log-info">系统就绪，等待 Pod 创建</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>K8s 调度器工作原理</strong><br>
+    调度器持续 Watch API Server，发现 nodeName 为空的 Pod（未调度状态），
+    通过两个阶段为 Pod 选择最合适的节点：过滤掉不满足条件的节点，再对剩余节点评分选最优。
+  </div>
+</div>
+
+<div class="stage" id="s1">
+  <div class="main">
+    <div class="canvas">
+      <div class="canvas-title">过滤阶段（Filter）— 淘汰不满足条件的节点</div>
+      <div style="margin-bottom:10px;font-size:0.72em;color:#475569">
+        Pod 需求：CPU 2核，MEM 4GB，亲和性：preferZone=A
+      </div>
+      <div class="filter-list" id="filterList">
+        <div style="display:flex;gap:6px;font-size:0.7em;font-weight:700;color:#94a3b8;padding:0 8px;margin-bottom:2px">
+          <span style="flex:1">节点</span><span style="width:80px">资源</span><span style="width:80px">污点</span><span style="width:80px">亲和性</span><span style="width:50px">结果</span>
+        </div>
+        <div class="filter-item"><span style="flex:1">node72</span><span style="width:80px;color:#16a34a">✅ 充足</span><span style="width:80px;color:#16a34a">✅ 无</span><span style="width:80px;color:#16a34a">✅ 满足</span><span style="width:50px" class="filter-pass">通过</span></div>
+        <div class="filter-item"><span style="flex:1">node73</span><span style="width:80px;color:#dc2626">❌ 不足</span><span style="width:80px;color:#16a34a">✅ 无</span><span style="width:80px;color:#16a34a">✅ 满足</span><span style="width:50px" class="filter-fail">淘汰</span></div>
+        <div class="filter-item"><span style="flex:1">node74</span><span style="width:80px;color:#16a34a">✅ 充足</span><span style="width:80px;color:#dc2626">❌ 有污点</span><span style="width:80px;color:#16a34a">✅ 满足</span><span style="width:50px" class="filter-fail">淘汰</span></div>
+        <div class="filter-item"><span style="flex:1">node75</span><span style="width:80px;color:#16a34a">✅ 充足</span><span style="width:80px;color:#16a34a">✅ 无</span><span style="width:80px;color:#d97706">⚠️ 不满足</span><span style="width:50px" class="filter-fail">淘汰</span></div>
+      </div>
+      <div style="margin-top:10px;padding:8px;background:#dbeafe;border-radius:8px;font-size:0.72em;color:#1d4ed8">
+        ✅ 过滤结果：仅 node72 通过，进入评分阶段
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">常见过滤插件</div>
+        <div style="font-size:0.7em;line-height:1.9;color:#475569">
+          <div>📦 <strong>NodeResourcesFit</strong><br><span style="color:#64748b">资源是否充足</span></div>
+          <div>🚫 <strong>TaintToleration</strong><br><span style="color:#64748b">污点/容忍度</span></div>
+          <div>📍 <strong>NodeAffinity</strong><br><span style="color:#64748b">节点亲和性</span></div>
+          <div>🔗 <strong>PodAffinity</strong><br><span style="color:#64748b">Pod亲和/反亲和</span></div>
+          <div>🌐 <strong>NodePorts</strong><br><span style="color:#64748b">端口冲突检测</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>过滤阶段（Filter）</strong>：并行检查所有节点，同时运行多个过滤插件。只要有一个插件判定不通过，该节点就被淘汰。常见过滤条件：资源不足、有不可容忍的污点、不满足亲和性规则、端口冲突等。
+  </div>
+</div>
+
+<div class="stage" id="s2">
+  <div class="main">
+    <div class="canvas">
+      <div class="canvas-title">评分阶段（Score）— 对通过过滤的节点打分</div>
+      <div style="margin-bottom:8px;font-size:0.72em;color:#475569">通过过滤的节点：node72、node76、node77</div>
+      <div class="filter-list">
+        <div style="display:flex;gap:6px;font-size:0.7em;font-weight:700;color:#94a3b8;padding:0 8px;margin-bottom:2px">
+          <span style="flex:1">节点</span><span style="width:100px">资源均衡</span><span style="width:100px">镜像本地</span><span style="width:60px">总分</span>
+        </div>
+        <div class="filter-item">
+          <span style="flex:1">node72</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:60%"></div></div> 60</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:80%"></div></div> 80</span>
+          <span style="width:60px;font-weight:700;color:#2563eb">70</span>
+        </div>
+        <div class="filter-item" style="background:#dbeafe;border-color:#2563eb">
+          <span style="flex:1">node76 🏆</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:90%"></div></div> 90</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:95%"></div></div> 95</span>
+          <span style="width:60px;font-weight:700;color:#2563eb">92</span>
+        </div>
+        <div class="filter-item">
+          <span style="flex:1">node77</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:50%"></div></div> 50</span>
+          <span style="width:100px"><div class="score-bg"><div class="score-fill" style="width:40%"></div></div> 40</span>
+          <span style="width:60px;font-weight:700;color:#2563eb">45</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding:8px;background:#dcfce7;border-radius:8px;font-size:0.72em;color:#15803d">
+        🏆 最终选择：node76（总分92，最高）→ 写入 etcd 完成绑定
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">常见评分插件</div>
+        <div style="font-size:0.7em;line-height:1.9;color:#475569">
+          <div>⚖️ <strong>LeastAllocated</strong><br><span style="color:#64748b">资源使用最少优先</span></div>
+          <div>🖼️ <strong>ImageLocality</strong><br><span style="color:#64748b">镜像已存在优先</span></div>
+          <div>📍 <strong>NodeAffinity</strong><br><span style="color:#64748b">亲和性得分</span></div>
+          <div>🔀 <strong>InterPodAffinity</strong><br><span style="color:#64748b">Pod间亲和得分</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>评分阶段（Score）</strong>：对通过过滤的节点用多个评分插件打分（0-100），加权求和得到总分，选总分最高的节点。若最高分相同，则随机选一个。
+  </div>
+</div>
+
+<div class="stage" id="s3">
+  <div class="main">
+    <div class="canvas">
+      <div class="canvas-title">绑定与启动阶段</div>
+      <div class="flow">
+        <div class="component c-scheduler"><div class="comp-title">🎯 Scheduler</div><div class="comp-detail">选定 node76，调用 API Server 写入 nodeName=node76</div></div>
+        <div class="arrow">↓ Bind</div>
+        <div class="component c-etcd"><div class="comp-title">🗄️ etcd</div><div class="comp-detail">Pod.spec.nodeName = "node76" 持久化</div></div>
+        <div class="arrow">↓ Watch 通知</div>
+        <div class="component c-kubelet"><div class="comp-title">🤖 kubelet（node76）</div><div class="comp-detail">发现分配给自己的 Pod，开始处理</div></div>
+        <div class="arrow">↓</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <div style="background:#fff7ed;border:1px solid #f97316;border-radius:8px;padding:8px 12px;font-size:0.72em;color:#c2410c;text-align:center">📦 拉取镜像<br>harbor.devops.local</div>
+          <div style="background:#f0fdf4;border:1px solid #22c55e;border-radius:8px;padding:8px 12px;font-size:0.72em;color:#15803d;text-align:center">🚀 创建容器<br>containerd</div>
+          <div style="background:#eff6ff;border:1px solid #3b82f6;border-radius:8px;padding:8px 12px;font-size:0.72em;color:#1d4ed8;text-align:center">🌐 配置网络<br>CNI 插件</div>
+          <div style="background:#faf5ff;border:1px solid #a855f7;border-radius:8px;padding:8px 12px;font-size:0.72em;color:#7e22ce;text-align:center">✅ 上报状态<br>Running</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">调度完整耗时</div>
+        <div style="font-size:0.7em;line-height:2;color:#475569">
+          <div>过滤阶段：<strong style="color:#1e293b">~1ms</strong></div>
+          <div>评分阶段：<strong style="color:#1e293b">~1ms</strong></div>
+          <div>绑定写etcd：<strong style="color:#1e293b">~10ms</strong></div>
+          <div>kubelet响应：<strong style="color:#1e293b">~1s</strong></div>
+          <div>镜像拉取：<strong style="color:#1e293b">秒~分钟</strong></div>
+          <div>容器启动：<strong style="color:#1e293b">~1s</strong></div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">调度失败场景</div>
+        <div style="font-size:0.7em;line-height:1.9;color:#dc2626">
+          <div>😱 Pending：所有节点过滤失败</div>
+          <div>😱 资源不足：无法调度</div>
+          <div>😱 污点未容忍：被所有节点拒绝</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>绑定阶段（Bind）</strong>：Scheduler 将 Pod 的 nodeName 字段写入 etcd，调度完成。目标节点的 kubelet 通过 Watch 机制得知后，负责实际创建容器、配置网络、挂载存储。
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-gray" onclick="goStage(0)">↺ 重置</button>
+  <button class="btn btn-primary" id="btnPrev" onclick="prev()" disabled>← 上一步</button>
+  <button class="btn btn-primary" id="btnNext" onclick="next()">下一步 →</button>
+</div>
+
+<script>
+const stages = ['总览', '过滤Filter', '评分Score', '绑定Bind'];
+let cur = 0;
+
+document.getElementById('tabs').innerHTML = stages.map((s,i) =>
+  `<div class="tab ${i===0?'active':''}" onclick="goStage(${i})">${s}</div>`).join('');
+
+function goStage(n) {
+  cur = n;
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.getElementById('btnPrev').disabled = n === 0;
+  document.getElementById('btnNext').disabled = n === stages.length - 1;
+}
+function next() { if(cur < stages.length-1) goStage(cur+1); }
+function prev() { if(cur > 0) goStage(cur-1); }
+</script>
+
+</body>
+</html>

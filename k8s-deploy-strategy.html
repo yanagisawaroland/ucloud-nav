@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s 三种发布策略对比</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.15em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 7px 16px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.73em; font-weight: 600; transition: all 0.2s; }
+.tab.active { color: #fff; }
+.tab-rolling.active { background: #2563eb; border-color: #2563eb; }
+.tab-bluegreen.active { background: #059669; border-color: #059669; }
+.tab-canary.active { background: #d97706; border-color: #d97706; }
+.tab-compare.active { background: #7c3aed; border-color: #7c3aed; }
+.tab:hover:not(.active) { border-color: #94a3b8; }
+
+.stage { display: none; max-width: 980px; margin: 0 auto; }
+.stage.active { display: block; }
+
+.two-col { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; font-weight: 700; }
+
+/* Pod 格子 */
+.pods-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pod { width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.65em; font-weight: 700; border: 2px solid; transition: all 0.4s; cursor: default; }
+.pod-v1 { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.pod-v2 { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.pod-v2-green { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.pod-term { background: #fef2f2; border-color: #ef4444; color: #b91c1c; opacity: 0.6; }
+.pod-empty { background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; border-style: dashed; }
+.pod-starting { background: #fef3c7; border-color: #f59e0b; color: #92400e; animation: pulse 0.6s infinite; }
+
+/* 流量条 */
+.traffic-bar { display: flex; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0; margin: 6px 0; }
+.tb-v1 { background: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 0.68em; font-weight: 700; color: #fff; transition: width 0.6s; white-space: nowrap; overflow: hidden; }
+.tb-v2 { background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 0.68em; font-weight: 700; color: #fff; transition: width 0.6s; white-space: nowrap; overflow: hidden; }
+.tb-green { background: #22c55e; display: flex; align-items: center; justify-content: center; font-size: 0.68em; font-weight: 700; color: #fff; transition: width 0.6s; white-space: nowrap; overflow: hidden; }
+
+/* 步骤控制 */
+.step-progress { display: flex; gap: 4px; align-items: center; margin: 8px 0; }
+.step-dot { width: 24px; height: 6px; border-radius: 3px; background: #e2e8f0; transition: all 0.3s; }
+.step-dot.done { background: #2563eb; }
+.step-dot.current { background: #f59e0b; }
+.step-label { font-size: 0.7em; color: #64748b; margin-left: 6px; }
+
+/* 环境框 */
+.env-box { border-radius: 10px; padding: 12px; border: 2px solid; margin-bottom: 8px; }
+.env-title { font-size: 0.72em; font-weight: 700; margin-bottom: 8px; }
+.env-prod { background: #eff6ff; border-color: #3b82f6; }
+.env-prod .env-title { color: #1d4ed8; }
+.env-staging { background: #f0fdf4; border-color: #22c55e; }
+.env-staging .env-title { color: #15803d; }
+
+/* 面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+.kv { display: flex; justify-content: space-between; font-size: 0.7em; margin-bottom: 5px; }
+.kv-label { color: #64748b; }
+.kv-val { font-weight: 700; color: #1e293b; }
+.kv-ok { color: #16a34a; }
+.kv-warn { color: #d97706; }
+.kv-err { color: #dc2626; }
+
+.log { max-height: 130px; overflow-y: auto; }
+.log-item { font-size: 0.66em; padding: 3px 0; border-bottom: 1px solid #f1f5f9; display: flex; gap: 5px; }
+.log-time { color: #94a3b8; flex-shrink: 0; }
+.log-ok { color: #16a34a; }
+.log-warn { color: #d97706; }
+.log-info { color: #2563eb; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.73em; line-height: 1.7; color: #475569; max-width: 980px; margin-left: auto; margin-right: auto; }
+.explain strong { color: #1e293b; }
+
+/* 对比表 */
+.compare-table { width: 100%; border-collapse: collapse; font-size: 0.72em; }
+.compare-table th { background: #1e293b; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+.compare-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.compare-table tr:nth-child(even) td { background: #f8fafc; }
+.td-ok { color: #16a34a; font-weight: 600; }
+.td-warn { color: #d97706; font-weight: 600; }
+.td-err { color: #dc2626; font-weight: 600; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; transition: all 0.2s; }
+.btn-blue { background: #2563eb; color: #fff; }
+.btn-green { background: #059669; color: #fff; }
+.btn-orange { background: #d97706; color: #fff; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+</head>
+<body>
+<h2>🚀 三种发布策略对比动图</h2>
+<p class="subtitle">滚动更新 · 蓝绿部署 · 金丝雀发布 · 原理演示与对比</p>
+
+<div class="tabs">
+  <div class="tab tab-rolling active" onclick="showTab(0)">① 滚动更新</div>
+  <div class="tab tab-bluegreen" onclick="showTab(1)">② 蓝绿部署</div>
+  <div class="tab tab-canary" onclick="showTab(2)">③ 金丝雀发布</div>
+  <div class="tab tab-compare" onclick="showTab(3)">📊 对比总结</div>
+</div>
+
+<!-- 滚动更新 -->
+<div class="stage active" id="s0">
+  <div class="two-col">
+    <div class="canvas">
+      <div class="canvas-title">滚动更新（Rolling Update）— K8s 默认策略</div>
+      <div style="font-size:0.7em;color:#475569;margin-bottom:8px">
+        策略：maxUnavailable=1, maxSurge=1 · 逐个替换 Pod
+      </div>
+      <div class="step-progress" id="rolling-progress"></div>
+      <div style="font-size:0.72em;font-weight:700;color:#1e293b;margin:8px 0" id="rolling-step-label">初始状态：6个 v1 Pod</div>
+
+      <div style="font-size:0.68em;color:#64748b;margin-bottom:4px">用户流量分配：</div>
+      <div class="traffic-bar">
+        <div class="tb-v1" id="rolling-tb-v1" style="width:100%">v1 100%</div>
+        <div class="tb-v2" id="rolling-tb-v2" style="width:0%"></div>
+      </div>
+
+      <div style="font-size:0.68em;color:#64748b;margin:8px 0 4px">Pod 状态（蓝=v1 黄=v2 红=终止中）：</div>
+      <div class="pods-grid" id="rolling-pods"></div>
+
+      <div style="margin-top:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;font-size:0.7em;color:#1d4ed8" id="rolling-note">
+        📋 Deployment 控制器管理滚动替换过程
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">当前状态</div>
+        <div class="kv"><span class="kv-label">v1 Pod</span><span class="kv-val" id="rolling-v1-count">6</span></div>
+        <div class="kv"><span class="kv-label">v2 Pod</span><span class="kv-val" id="rolling-v2-count">0</span></div>
+        <div class="kv"><span class="kv-label">服务中断</span><span class="kv-val kv-ok">无</span></div>
+        <div class="kv"><span class="kv-label">额外资源</span><span class="kv-val kv-warn">maxSurge=1</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">事件日志</div>
+        <div class="log" id="rolling-log"></div>
+      </div>
+    </div>
+  </div>
+  <div class="explain" id="rolling-explain">
+    <strong>滚动更新（Rolling Update）</strong>：K8s Deployment 默认策略。按照 maxUnavailable（最多不可用Pod数）和 maxSurge（最多额外Pod数）逐步替换旧 Pod。过程中新旧版本同时对外提供服务，用户请求可能打到任意版本。适合对版本一致性要求不高的场景。
+  </div>
+  <div class="controls">
+    <button class="btn btn-gray" onclick="rollingReset()">↺ 重置</button>
+    <button class="btn btn-blue" id="rolling-btn" onclick="rollingNext()">▶ 开始滚动更新</button>
+  </div>
+</div>
+
+<!-- 蓝绿部署 -->
+<div class="stage" id="s1">
+  <div class="two-col">
+    <div class="canvas">
+      <div class="canvas-title">蓝绿部署（Blue-Green）— 瞬间切换，快速回滚</div>
+      <div style="font-size:0.7em;color:#475569;margin-bottom:10px">
+        两套完整环境同时运行，切换时只改 Service selector
+      </div>
+
+      <div style="font-size:0.68em;color:#64748b;margin-bottom:4px">流量指向：</div>
+      <div class="traffic-bar">
+        <div class="tb-v1" id="bg-tb-v1" style="width:100%">→ 蓝环境(v1) 100%</div>
+        <div class="tb-green" id="bg-tb-v2" style="width:0%"></div>
+      </div>
+
+      <div class="env-box env-prod" id="bg-blue-box">
+        <div class="env-title">🔵 蓝环境（当前生产 v1）← 流量指向这里</div>
+        <div class="pods-grid">
+          <div class="pod pod-v1">v1</div><div class="pod pod-v1">v1</div>
+          <div class="pod pod-v1">v1</div><div class="pod pod-v1">v1</div>
+          <div class="pod pod-v1">v1</div><div class="pod pod-v1">v1</div>
+        </div>
+      </div>
+
+      <div class="env-box" id="bg-green-box" style="background:#f8fafc;border-color:#e2e8f0">
+        <div class="env-title" id="bg-green-title" style="color:#64748b">🟢 绿环境（新版本 v2）— 待机/测试中</div>
+        <div class="pods-grid" id="bg-green-pods">
+          <div class="pod pod-empty">?</div><div class="pod pod-empty">?</div>
+          <div class="pod pod-empty">?</div><div class="pod pod-empty">?</div>
+          <div class="pod pod-empty">?</div><div class="pod pod-empty">?</div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;font-size:0.7em;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px" id="bg-note">
+        📋 切换只需修改 Service selector: version=v1 → version=v2（毫秒级）
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">当前状态</div>
+        <div class="kv"><span class="kv-label">生产流量</span><span class="kv-val" id="bg-traffic">蓝(v1) 100%</span></div>
+        <div class="kv"><span class="kv-label">蓝环境</span><span class="kv-val kv-ok" id="bg-blue-status">运行中</span></div>
+        <div class="kv"><span class="kv-label">绿环境</span><span class="kv-val kv-warn" id="bg-green-status">待部署</span></div>
+        <div class="kv"><span class="kv-label">回滚时间</span><span class="kv-val kv-ok">秒级</span></div>
+        <div class="kv"><span class="kv-label">额外资源</span><span class="kv-val kv-warn">翻倍</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">事件日志</div>
+        <div class="log" id="bg-log"></div>
+      </div>
+    </div>
+  </div>
+  <div class="explain" id="bg-explain">
+    <strong>蓝绿部署（Blue-Green）</strong>：维护两套完整的生产环境（蓝=当前版本，绿=新版本），切换时只修改 Service 的 selector，流量瞬间从蓝切到绿。出问题可立即切回蓝（秒级回滚）。缺点：需要双倍资源，且切换瞬间仍有少量请求丢失。
+  </div>
+  <div class="controls">
+    <button class="btn btn-gray" onclick="bgReset()">↺ 重置</button>
+    <button class="btn btn-green" id="bg-btn" onclick="bgNext()">▶ 部署绿环境</button>
+    <button class="btn btn-gray" id="bg-rollback-btn" onclick="bgRollback()" disabled>⚡ 紧急回滚</button>
+  </div>
+</div>
+
+<!-- 金丝雀 -->
+<div class="stage" id="s2">
+  <div class="two-col">
+    <div class="canvas">
+      <div class="canvas-title">金丝雀发布（Canary）— 精确流量控制，灰度验证</div>
+      <div style="font-size:0.7em;color:#475569;margin-bottom:8px">
+        Istio + Argo Rollouts：按权重分流，Analysis 质量门禁
+      </div>
+
+      <div style="font-size:0.68em;color:#64748b;margin-bottom:4px">流量权重（可实时调整）：</div>
+      <div class="traffic-bar">
+        <div class="tb-v1" id="canary-tb-v1" style="width:100%">stable(v1) 100%</div>
+        <div class="tb-v2" id="canary-tb-v2" style="width:0%"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin:10px 0;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:0.68em;color:#1d4ed8;font-weight:700;margin-bottom:6px">🔵 Stable（v1）</div>
+          <div class="pods-grid" id="canary-stable-pods"></div>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:0.68em;color:#92400e;font-weight:700;margin-bottom:6px">🟡 Canary（v2）</div>
+          <div class="pods-grid" id="canary-canary-pods"></div>
+        </div>
+      </div>
+
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;font-size:0.7em;color:#15803d;margin-top:4px">
+        <div style="font-weight:700;margin-bottom:4px">📊 Analysis 质量门禁</div>
+        <div style="display:flex;justify-content:space-between">
+          <span>成功率</span><span id="canary-rate" style="font-weight:700">-</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>阈值</span><span>≥ 95%</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>结果</span><span id="canary-analysis" style="font-weight:700">未开始</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">发布进度</div>
+        <div class="kv"><span class="kv-label">当前步骤</span><span class="kv-val" id="canary-step">初始</span></div>
+        <div class="kv"><span class="kv-label">stable流量</span><span class="kv-val" id="canary-s-pct">100%</span></div>
+        <div class="kv"><span class="kv-label">canary流量</span><span class="kv-val" id="canary-c-pct">0%</span></div>
+        <div class="kv"><span class="kv-label">服务中断</span><span class="kv-val kv-ok">无</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">事件日志</div>
+        <div class="log" id="canary-log"></div>
+      </div>
+    </div>
+  </div>
+  <div class="explain" id="canary-explain">
+    <strong>金丝雀发布（Canary）</strong>：先将少量流量（如5%/20%）切到新版本，通过 Analysis（Prometheus 指标）自动验证新版本质量，成功后逐步放量直到 100%。出问题自动回滚。Istio 提供精确的权重控制，1个Pod也可以承接任意比例流量，不需要按副本数比例。
+  </div>
+  <div class="controls">
+    <button class="btn btn-gray" onclick="canaryReset()">↺ 重置</button>
+    <button class="btn btn-orange" id="canary-btn" onclick="canaryNext()">▶ 触发发布</button>
+    <button class="btn btn-gray" id="canary-abort-btn" onclick="canaryAbort()" disabled>✕ 中止回滚</button>
+  </div>
+</div>
+
+<!-- 对比总结 -->
+<div class="stage" id="s3">
+  <div class="canvas">
+    <div class="canvas-title">三种发布策略全面对比</div>
+    <table class="compare-table">
+      <tr>
+        <th>对比项</th>
+        <th>🔵 滚动更新</th>
+        <th>🟢 蓝绿部署</th>
+        <th>🟡 金丝雀发布</th>
+      </tr>
+      <tr>
+        <td><strong>服务中断</strong></td>
+        <td class="td-ok">无（滚动替换）</td>
+        <td class="td-warn">极短（切换瞬间）</td>
+        <td class="td-ok">无</td>
+      </tr>
+      <tr>
+        <td><strong>回滚速度</strong></td>
+        <td class="td-warn">较慢（需重新滚动）</td>
+        <td class="td-ok">秒级（切回蓝）</td>
+        <td class="td-ok">自动回滚</td>
+      </tr>
+      <tr>
+        <td><strong>额外资源</strong></td>
+        <td class="td-ok">少（maxSurge）</td>
+        <td class="td-err">翻倍（两套环境）</td>
+        <td class="td-ok">极少（1个canary Pod）</td>
+      </tr>
+      <tr>
+        <td><strong>流量控制精度</strong></td>
+        <td class="td-warn">按副本数比例</td>
+        <td class="td-err">只能100%切换</td>
+        <td class="td-ok">任意精度（1%）</td>
+      </tr>
+      <tr>
+        <td><strong>版本共存</strong></td>
+        <td class="td-warn">短暂共存</td>
+        <td class="td-ok">完整共存</td>
+        <td class="td-ok">长期共存</td>
+      </tr>
+      <tr>
+        <td><strong>复杂度</strong></td>
+        <td class="td-ok">低（K8s原生）</td>
+        <td class="td-warn">中（需双环境）</td>
+        <td class="td-warn">高（需Istio/Rollouts）</td>
+      </tr>
+      <tr>
+        <td><strong>质量验证</strong></td>
+        <td class="td-err">无自动验证</td>
+        <td class="td-warn">手动测试绿环境</td>
+        <td class="td-ok">Analysis自动验证</td>
+      </tr>
+      <tr>
+        <td><strong>适用场景</strong></td>
+        <td>简单业务，快速迭代</td>
+        <td>高可用，快速切换</td>
+        <td>大流量，精细控制</td>
+      </tr>
+      <tr>
+        <td><strong>我们的实践</strong></td>
+        <td>A环境 Deployment 默认</td>
+        <td>-</td>
+        <td>B环境 Argo Rollouts + Istio</td>
+      </tr>
+    </table>
+  </div>
+  <div class="canvas">
+    <div class="canvas-title">选型决策树</div>
+    <div style="font-size:0.76em;color:#475569;line-height:2.2;padding:4px">
+      <div>Q1: 是否需要精确流量控制？</div>
+      <div style="margin-left:20px">是 → 金丝雀（需要 Istio）</div>
+      <div style="margin-left:20px">否 → Q2</div>
+      <div>Q2: 是否需要秒级回滚能力？</div>
+      <div style="margin-left:20px">是 → 蓝绿部署（资源充足时）</div>
+      <div style="margin-left:20px">否 → Q3</div>
+      <div>Q3: 对发布复杂度要求低？</div>
+      <div style="margin-left:20px">是 → 滚动更新（K8s默认，够用就行）</div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>实际使用建议</strong>：中小项目用滚动更新即可，K8s 原生支持，无需额外组件。追求快速回滚且资源充足时用蓝绿部署。大流量高可用的生产服务用金丝雀发布，配合 Istio + Argo Rollouts + Prometheus Analysis，实现全自动灰度发布和质量验证。三种策略不互斥，可以根据不同服务的重要程度分别采用。
+  </div>
+</div>
+
+<script>
+// ==================== Tab ====================
+function showTab(n) {
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+}
+
+// ==================== 滚动更新 ====================
+const ROLLING_STEPS = [
+  { v1: 6, v2: 0, term: 0, label: '初始状态：6个 v1 Pod', note: '📋 准备开始滚动更新 v1→v2', log: ['Deployment 检测到镜像变更', '开始滚动更新...'] },
+  { v1: 5, v2: 1, term: 1, label: '步骤1：创建1个v2，终止1个v1', note: '📋 maxSurge=1: 先创建新Pod再删旧Pod', log: ['创建 v2 Pod #1', '终止 v1 Pod #1', '流量自动切换'] },
+  { v1: 4, v2: 2, term: 0, label: '步骤2：v2=2，v1=4', note: '📋 新Pod就绪后继续替换下一个', log: ['v2 Pod #1 就绪', '创建 v2 Pod #2', '终止 v1 Pod #2'] },
+  { v1: 3, v2: 3, term: 0, label: '步骤3：各50%', note: '📋 新旧版本同时对外提供服务', log: ['v2 Pod #2 就绪', '已完成50%替换', '用户请求可能到达v1或v2'] },
+  { v1: 2, v2: 4, term: 0, label: '步骤4：v2=4，v1=2', note: '📋 继续替换...', log: ['创建 v2 Pod #4', '终止 v1 Pod #4'] },
+  { v1: 1, v2: 5, term: 0, label: '步骤5：v2=5，v1=1', note: '📋 即将完成', log: ['v2 Pod #4 就绪', '创建 v2 Pod #5', '终止 v1 Pod #5'] },
+  { v1: 0, v2: 6, term: 0, label: '✅ 完成！全部替换为 v2', note: '✅ 滚动更新完成，零中断', log: ['v2 Pod #6 就绪', '✅ 滚动更新完成！', '所有流量切换到 v2'] },
+];
+let rollingStep = 0;
+let rollingLogs = [];
+
+function renderRollingPods(v1, v2, term) {
+  const grid = document.getElementById('rolling-pods');
+  let html = '';
+  for(let i=0; i<v1; i++) html += `<div class="pod pod-v1">v1</div>`;
+  for(let i=0; i<term; i++) html += `<div class="pod pod-term">✕</div>`;
+  for(let i=0; i<v2; i++) html += `<div class="pod pod-v2">v2</div>`;
+  grid.innerHTML = html;
+}
+
+function addRollingLog(msgs) {
+  const t = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  msgs.forEach(m => rollingLogs.unshift({t, m}));
+  document.getElementById('rolling-log').innerHTML = rollingLogs.slice(0,15).map(l =>
+    `<div class="log-item"><span class="log-time">${l.t}</span><span class="${l.m.includes('✅')?'log-ok':l.m.includes('终止')?'log-warn':'log-info'}">${l.m}</span></div>`
+  ).join('');
+}
+
+function rollingReset() {
+  rollingStep = 0; rollingLogs = [];
+  document.getElementById('rolling-btn').textContent = '▶ 开始滚动更新';
+  document.getElementById('rolling-btn').disabled = false;
+  updateRolling(ROLLING_STEPS[0]);
+}
+
+function updateRolling(s) {
+  const pct1 = Math.round(s.v1/(s.v1+s.v2||1)*100) || 0;
+  const pct2 = 100 - pct1;
+  const tb1 = document.getElementById('rolling-tb-v1');
+  const tb2 = document.getElementById('rolling-tb-v2');
+  tb1.style.width = pct1+'%'; tb1.textContent = pct1>8?'v1 '+pct1+'%':'';
+  tb2.style.width = pct2+'%'; tb2.textContent = pct2>8?'v2 '+pct2+'%':'';
+  document.getElementById('rolling-step-label').textContent = s.label;
+  document.getElementById('rolling-note').textContent = s.note;
+  document.getElementById('rolling-v1-count').textContent = s.v1;
+  document.getElementById('rolling-v2-count').textContent = s.v2;
+  renderRollingPods(s.v1, s.v2, s.term||0);
+  addRollingLog(s.log);
+  const dots = document.getElementById('rolling-progress');
+  dots.innerHTML = ROLLING_STEPS.map((_,i)=>`<div class="step-dot ${i<rollingStep?'done':i===rollingStep?'current':''}"></div>`).join('') + `<span class="step-label">步骤 ${rollingStep+1}/${ROLLING_STEPS.length}</span>`;
+}
+
+function rollingNext() {
+  if(rollingStep < ROLLING_STEPS.length-1) {
+    rollingStep++;
+    updateRolling(ROLLING_STEPS[rollingStep]);
+    if(rollingStep === ROLLING_STEPS.length-1) {
+      document.getElementById('rolling-btn').textContent = '✅ 完成';
+      document.getElementById('rolling-btn').disabled = true;
+    } else {
+      document.getElementById('rolling-btn').textContent = '▶ 下一步';
+    }
+  }
+}
+
+// ==================== 蓝绿 ====================
+let bgState = 0;
+let bgLogs = [];
+
+function addBgLog(m) {
+  const t = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  bgLogs.unshift({t, m});
+  document.getElementById('bg-log').innerHTML = bgLogs.slice(0,15).map(l=>
+    `<div class="log-item"><span class="log-time">${l.t}</span><span class="${l.m.includes('✅')||l.m.includes('成功')?'log-ok':l.m.includes('回滚')?'log-warn':'log-info'}">${l.m}</span></div>`
+  ).join('');
+}
+
+function bgReset() {
+  bgState = 0; bgLogs = [];
+  document.getElementById('bg-btn').textContent = '▶ 部署绿环境';
+  document.getElementById('bg-btn').disabled = false;
+  document.getElementById('bg-rollback-btn').disabled = true;
+  document.getElementById('bg-blue-box').className = 'env-box env-prod';
+  document.getElementById('bg-green-box').style.cssText = 'background:#f8fafc;border-color:#e2e8f0;border-width:2px;border-style:solid;border-radius:10px;padding:12px;margin-bottom:8px';
+  document.getElementById('bg-green-title').style.color = '#64748b';
+  document.getElementById('bg-green-title').textContent = '🟢 绿环境（新版本 v2）— 待机/测试中';
+  document.getElementById('bg-green-pods').innerHTML = '<div class="pod pod-empty">?</div>'.repeat(6);
+  document.getElementById('bg-tb-v1').style.width='100%'; document.getElementById('bg-tb-v1').textContent='→ 蓝环境(v1) 100%';
+  document.getElementById('bg-tb-v2').style.width='0%'; document.getElementById('bg-tb-v2').textContent='';
+  document.getElementById('bg-traffic').textContent='蓝(v1) 100%';
+  document.getElementById('bg-blue-status').textContent='运行中'; document.getElementById('bg-blue-status').className='kv-val kv-ok';
+  document.getElementById('bg-green-status').textContent='待部署'; document.getElementById('bg-green-status').className='kv-val kv-warn';
+  document.getElementById('bg-note').textContent='📋 切换只需修改 Service selector: version=v1 → version=v2（毫秒级）';
+}
+
+function bgNext() {
+  bgState++;
+  if(bgState===1) {
+    addBgLog('开始部署绿环境（v2）...');
+    addBgLog('创建6个 v2 Pod...');
+    document.getElementById('bg-green-pods').innerHTML = '<div class="pod pod-starting">v2</div>'.repeat(6);
+    document.getElementById('bg-green-status').textContent='部署中...'; document.getElementById('bg-green-status').className='kv-val kv-warn';
+    document.getElementById('bg-btn').textContent = '▶ 切换流量到绿环境';
+  } else if(bgState===2) {
+    addBgLog('绿环境所有Pod就绪！');
+    addBgLog('测试通过，准备切换流量...');
+    document.getElementById('bg-green-pods').innerHTML = '<div class="pod pod-v2-green">v2</div>'.repeat(6);
+    document.getElementById('bg-green-box').style.cssText = 'background:#f0fdf4;border:2px solid #22c55e;border-radius:10px;padding:12px;margin-bottom:8px';
+    document.getElementById('bg-green-title').style.color='#15803d';
+    document.getElementById('bg-green-title').textContent='🟢 绿环境（新版本 v2）✅ 就绪';
+    document.getElementById('bg-green-status').textContent='就绪'; document.getElementById('bg-green-status').className='kv-val kv-ok';
+    document.getElementById('bg-btn').textContent = '⚡ 执行切换（改Service selector）';
+  } else if(bgState===3) {
+    addBgLog('修改 Service selector: version=v2');
+    addBgLog('✅ 流量瞬间切换到绿环境！');
+    document.getElementById('bg-tb-v1').style.width='0%'; document.getElementById('bg-tb-v1').textContent='';
+    document.getElementById('bg-tb-v2').style.width='100%'; document.getElementById('bg-tb-v2').textContent='→ 绿环境(v2) 100%';
+    document.getElementById('bg-traffic').textContent='绿(v2) 100%';
+    document.getElementById('bg-blue-box').className='env-box';
+    document.getElementById('bg-blue-box').style.cssText='background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px';
+    document.getElementById('bg-blue-box').querySelector('.env-title').textContent='🔵 蓝环境（v1）— 待机（可快速回滚）';
+    document.getElementById('bg-blue-status').textContent='待机'; document.getElementById('bg-blue-status').className='kv-val kv-warn';
+    document.getElementById('bg-btn').textContent='✅ 切换完成';
+    document.getElementById('bg-btn').disabled=true;
+    document.getElementById('bg-rollback-btn').disabled=false;
+    document.getElementById('bg-note').textContent='⚡ 如需回滚：改回 selector: version=v1，蓝环境立刻接管流量';
+  }
+}
+
+function bgRollback() {
+  addBgLog('⚠️ 发现问题，执行紧急回滚！');
+  addBgLog('修改 Service selector: version=v1');
+  addBgLog('✅ 回滚完成，流量切回蓝环境（v1）');
+  document.getElementById('bg-tb-v1').style.width='100%'; document.getElementById('bg-tb-v1').textContent='→ 蓝环境(v1) 100%';
+  document.getElementById('bg-tb-v2').style.width='0%'; document.getElementById('bg-tb-v2').textContent='';
+  document.getElementById('bg-traffic').textContent='蓝(v1) 100%';
+  document.getElementById('bg-rollback-btn').disabled=true;
+}
+
+// ==================== 金丝雀 ====================
+const CANARY_STEPS = [
+  { sw:100, cw:0, sp:10, cp:0, step:'初始', log:['系统就绪，stable: v1 × 10'], rate:'-', analysis:'未开始' },
+  { sw:80, cw:20, sp:10, cp:1, step:'Step1: 20%', log:['触发发布 v1→v2','创建1个canary Pod','VirtualService: stable 80% / canary 20%','Analysis开始检测...'], rate:'97.3%', analysis:'✅ 通过' },
+  { sw:50, cw:50, sp:10, cp:1, step:'Step2: 50%', log:['Analysis: 成功率97.3% ≥ 95%','自动推进: setWeight 50%','VirtualService: stable 50% / canary 50%'], rate:'96.8%', analysis:'✅ 通过' },
+  { sw:0, cw:100, sp:0, cp:10, step:'Step3: 100%', log:['Analysis: 成功率96.8% ≥ 95%','全量切换: setWeight 100%','stable扩容为10个v2 Pod','旧v1 ScaledDown','✅ 发布完成！'], rate:'97.1%', analysis:'✅ 全部通过' },
+];
+let canaryStep = 0;
+let canaryLogs = [];
+
+function renderCanaryPods(sp, cp) {
+  const stable = document.getElementById('canary-stable-pods');
+  const canary = document.getElementById('canary-canary-pods');
+  const isComplete = canaryStep === CANARY_STEPS.length-1;
+  stable.innerHTML = Array.from({length:isComplete?10:sp}, (_,i) =>
+    `<div class="pod ${isComplete?'pod-v2-green':'pod-v1'}">${isComplete?'v2':'v1'}</div>`
+  ).join('') + Array.from({length:isComplete?0:Math.max(0,10-sp)}, () =>
+    `<div class="pod pod-empty">·</div>`
+  ).join('');
+  canary.innerHTML = Array.from({length:cp}, () =>
+    `<div class="pod pod-v2">v2</div>`
+  ).join('') + Array.from({length:Math.max(0,3-cp)}, () =>
+    `<div class="pod pod-empty">·</div>`
+  ).join('');
+}
+
+function addCanaryLog(msgs) {
+  const t = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  msgs.forEach(m => canaryLogs.unshift({t,m}));
+  document.getElementById('canary-log').innerHTML = canaryLogs.slice(0,15).map(l=>
+    `<div class="log-item"><span class="log-time">${l.t}</span><span class="${l.m.includes('✅')?'log-ok':l.m.includes('Analysis')?'log-ok':'log-info'}">${l.m}</span></div>`
+  ).join('');
+}
+
+function updateCanary(s) {
+  const tb1 = document.getElementById('canary-tb-v1');
+  const tb2 = document.getElementById('canary-tb-v2');
+  tb1.style.width=s.sw+'%'; tb1.textContent=s.sw>8?'stable(v1) '+s.sw+'%':'';
+  tb2.style.width=s.cw+'%'; tb2.textContent=s.cw>8?'canary(v2) '+s.cw+'%':'';
+  document.getElementById('canary-step').textContent=s.step;
+  document.getElementById('canary-s-pct').textContent=s.sw+'%';
+  document.getElementById('canary-c-pct').textContent=s.cw+'%';
+  document.getElementById('canary-rate').textContent=s.rate;
+  document.getElementById('canary-analysis').textContent=s.analysis;
+  renderCanaryPods(s.sp, s.cp);
+  addCanaryLog(s.log);
+}
+
+function canaryReset() {
+  canaryStep=0; canaryLogs=[];
+  document.getElementById('canary-btn').textContent='▶ 触发发布';
+  document.getElementById('canary-btn').disabled=false;
+  document.getElementById('canary-abort-btn').disabled=true;
+  updateCanary(CANARY_STEPS[0]);
+}
+
+function canaryNext() {
+  if(canaryStep < CANARY_STEPS.length-1) {
+    canaryStep++;
+    updateCanary(CANARY_STEPS[canaryStep]);
+    document.getElementById('canary-abort-btn').disabled = canaryStep >= CANARY_STEPS.length-1;
+    if(canaryStep === CANARY_STEPS.length-1) {
+      document.getElementById('canary-btn').textContent='✅ 发布完成';
+      document.getElementById('canary-btn').disabled=true;
+      document.getElementById('canary-abort-btn').disabled=true;
+    } else {
+      document.getElementById('canary-btn').textContent='▶ 下一步（Analysis通过）';
+    }
+  }
+}
+
+function canaryAbort() {
+  addCanaryLog(['⚠️ 手动中止发布！','自动回滚: stable恢复100%','canary Pod销毁']);
+  const s = CANARY_STEPS[0];
+  const tb1 = document.getElementById('canary-tb-v1');
+  const tb2 = document.getElementById('canary-tb-v2');
+  tb1.style.width='100%'; tb1.textContent='stable(v1) 100%';
+  tb2.style.width='0%'; tb2.textContent='';
+  renderCanaryPods(10,0);
+  canaryStep=0;
+  document.getElementById('canary-btn').textContent='▶ 触发发布';
+  document.getElementById('canary-btn').disabled=false;
+  document.getElementById('canary-abort-btn').disabled=true;
+}
+
+// 初始化
+rollingReset();
+bgReset();
+canaryReset();
+</script>
+</body>
+</html>

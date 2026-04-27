@@ -1,0 +1,34 @@
+	
+全部网页访问地址清单（纯链接，逐条列出）
+
+基础地址：http://42.240.145.68:7777
+
+1. http://42.240.145.68:7777/index.html
+
+2. http://42.240.145.68:7777/arch-evolution.html
+
+3. http://42.240.145.68:7777/canary-flow.html
+
+4. http://42.240.145.68:7777/fault-propagation.html
+
+5. http://42.240.145.68:7777/istio-flow-1.html
+
+6. http://42.240.145.68:7777/istio-overview.html
+
+7. http://42.240.145.68:7777/k8s-cni-1.html
+
+8. http://42.240.145.68:7777/k8s-cni-2.html
+
+9. http://42.240.145.68:7777/k8s-cni-3.html
+
+10. http://42.240.145.68:7777/k8s-pod-lifecycle.html
+
+11. http://42.240.145.68:7777/k8s-scheduler-flow-0.html
+
+12. http://42.240.145.68:7777/k8s-scheduler-flow-1.html
+
+13. http://42.240.145.68:7777/k8s-scheduler-flow-2.html
+
+14. http://42.240.145.68:7777/k8s-scheduler-flow-3.html
+
+15. http://42.240.145.68:7777/memo.html

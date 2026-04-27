@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s etcd 数据流向与 Watch 机制</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.15em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 6px 14px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.72em; font-weight: 600; transition: all 0.2s; }
+.tab.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+.tab:hover:not(.active) { border-color: #0f766e; color: #0f766e; }
+
+.stage { display: none; max-width: 980px; margin: 0 auto; }
+.stage.active { display: block; }
+
+.two-col { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; font-weight: 700; }
+
+/* 组件框 */
+.comp { border-radius: 10px; padding: 10px 14px; border: 2px solid; transition: all 0.4s; }
+.comp-title { font-size: 0.78em; font-weight: 700; margin-bottom: 3px; }
+.comp-detail { font-size: 0.63em; opacity: 0.8; line-height: 1.5; }
+.c-api { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.c-etcd { background: #fff7ed; border-color: #f97316; color: #c2410c; }
+.c-ctrl { background: #faf5ff; border-color: #a855f7; color: #7e22ce; }
+.c-sched { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.c-kubelet { background: #ecfdf5; border-color: #10b981; color: #065f46; }
+.c-highlight { box-shadow: 0 0 0 3px rgba(15,118,110,0.3); transform: scale(1.01); }
+
+/* 流程箭头 */
+.flow { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.arrow { font-size: 0.85em; color: #94a3b8; text-align: center; transition: all 0.3s; }
+.arrow.active { color: #0f766e; font-weight: 700; }
+.arrow-label { font-size: 0.62em; color: #64748b; }
+
+/* Watch 订阅列表 */
+.watch-list { display: flex; flex-direction: column; gap: 5px; }
+.watch-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; border: 1px solid; font-size: 0.7em; transition: all 0.3s; }
+.wi-normal { background: #f8fafc; border-color: #e2e8f0; }
+.wi-active { background: #f0fdfa; border-color: #14b8a6; }
+.wi-dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; transition: all 0.3s; }
+.wi-dot.active { background: #0f766e; box-shadow: 0 0 0 3px rgba(15,118,110,0.2); }
+.wi-name { font-weight: 700; flex: 1; }
+.wi-event { font-size: 0.85em; color: #64748b; }
+
+/* etcd 键值 */
+.kv-store { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; }
+.kv-title { font-size: 0.68em; font-weight: 700; color: #92400e; margin-bottom: 6px; }
+.kv-row { display: flex; gap: 6px; font-size: 0.65em; font-family: monospace; padding: 3px 0; border-bottom: 1px solid #fef3c7; align-items: center; }
+.kv-row:last-child { border-bottom: none; }
+.kv-key { color: #c2410c; flex: 1; }
+.kv-val { color: #1d4ed8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv-rev { color: #94a3b8; min-width: 40px; text-align: right; }
+.kv-new { background: #dcfce7; border-radius: 4px; padding: 2px 4px; animation: flash 0.5s ease; }
+@keyframes flash { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* 事件流 */
+.event-stream { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.event-item { display: flex; gap: 6px; font-size: 0.68em; padding: 5px 8px; border-radius: 6px; border: 1px solid; align-items: flex-start; transition: all 0.3s; }
+.ei-put { background: #f0fdf4; border-color: #86efac; }
+.ei-delete { background: #fef2f2; border-color: #fca5a5; }
+.ei-info { background: #eff6ff; border-color: #bfdbfe; }
+.ei-type { font-weight: 700; min-width: 50px; }
+.ei-key { color: #475569; flex: 1; font-family: monospace; }
+.ei-time { color: #94a3b8; min-width: 60px; text-align: right; }
+
+/* 面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+.log { max-height: 160px; overflow-y: auto; }
+.log-item { font-size: 0.66em; padding: 3px 0; border-bottom: 1px solid #f1f5f9; display: flex; gap: 5px; }
+.log-time { color: #94a3b8; flex-shrink: 0; }
+.log-ok { color: #16a34a; }
+.log-info { color: #2563eb; }
+.log-orange { color: #d97706; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.73em; line-height: 1.7; color: #475569; max-width: 980px; margin-left: auto; margin-right: auto; }
+.explain strong { color: #1e293b; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; transition: all 0.2s; }
+.btn-teal { background: #0f766e; color: #fff; }
+.btn-teal:hover { background: #0d6b63; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.pulsing { animation: pulse 0.8s infinite; }
+</style>
+</head>
+<body>
+<h2>🗄️ etcd 数据流向与 Watch 机制</h2>
+<p class="subtitle">API Server → etcd → Watch → 控制器 · K8s 核心数据流动原理</p>
+
+<div class="tabs" id="tabs"></div>
+
+<!-- S0: 总览 -->
+<div class="stage active" id="s0">
+  <div class="canvas">
+    <div class="canvas-title">K8s 核心组件与数据流总览</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="flow">
+        <div style="font-size:0.7em;color:#64748b;margin-bottom:4px;text-align:center">① 写入流程</div>
+        <div class="comp c-api"><div class="comp-title">🌐 API Server</div><div class="comp-detail">唯一可以读写 etcd 的组件<br>所有操作必须经过 API Server</div></div>
+        <div class="arrow active">↓ gRPC 写入</div>
+        <div class="comp c-etcd"><div class="comp-title">🗄️ etcd</div><div class="comp-detail">强一致性 KV 存储<br>所有 K8s 对象的唯一数据源</div></div>
+        <div class="arrow active">↓ Watch 事件推送</div>
+        <div style="display:flex;gap:8px;width:100%">
+          <div class="comp c-ctrl" style="flex:1"><div class="comp-title">⚙️ Controller</div><div class="comp-detail">监听资源变化<br>驱动实际状态→期望状态</div></div>
+          <div class="comp c-sched" style="flex:1"><div class="comp-title">🎯 Scheduler</div><div class="comp-detail">监听未调度 Pod<br>计算最优节点</div></div>
+        </div>
+        <div class="arrow active">↓ 写回调度结果</div>
+        <div class="comp c-kubelet"><div class="comp-title">🤖 kubelet</div><div class="comp-detail">Watch 自己节点的 Pod<br>实际创建/删除容器</div></div>
+      </div>
+      <div>
+        <div style="font-size:0.7em;color:#64748b;margin-bottom:8px;text-align:center">② Watch 机制</div>
+        <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;font-size:0.7em;color:#0f766e;margin-bottom:10px">
+          <div style="font-weight:700;margin-bottom:6px">📡 Watch = 长连接订阅</div>
+          <div style="line-height:1.9">
+            <div>客户端发送 WATCH 请求</div>
+            <div>etcd 保持 HTTP/2 长连接</div>
+            <div>资源变化时主动推送事件</div>
+            <div>不需要轮询（Poll），高效</div>
+          </div>
+        </div>
+        <div style="font-size:0.7em;color:#475569;margin-bottom:6px;font-weight:700">事件类型：</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div class="event-item ei-put"><span class="ei-type" style="color:#16a34a">ADDED</span><span class="ei-key">新建资源</span></div>
+          <div class="event-item ei-put"><span class="ei-type" style="color:#2563eb">MODIFIED</span><span class="ei-key">更新资源</span></div>
+          <div class="event-item ei-delete"><span class="ei-type" style="color:#dc2626">DELETED</span><span class="ei-key">删除资源</span></div>
+          <div class="event-item ei-info"><span class="ei-type" style="color:#7c3aed">BOOKMARK</span><span class="ei-key">心跳/版本同步</span></div>
+        </div>
+        <div style="margin-top:10px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;font-size:0.68em;color:#92400e">
+          <div style="font-weight:700;margin-bottom:3px">🔑 ResourceVersion</div>
+          <div>etcd 每次写操作递增全局版本号<br>Watch 从指定版本开始，不会漏事件</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>etcd 是 K8s 的大脑</strong>：所有 K8s 对象（Pod/Service/Deployment等）都存储在 etcd 中。API Server 是唯一能读写 etcd 的组件，其他组件通过 Watch 机制监听变化。这种设计实现了组件解耦：每个控制器只需关注自己感兴趣的资源变化，无需轮询，高效且可靠。
+  </div>
+</div>
+
+<!-- S1: kubectl apply 完整流程 -->
+<div class="stage" id="s1">
+  <div class="two-col">
+    <div class="canvas">
+      <div class="canvas-title">kubectl apply → etcd → Watch 完整流程</div>
+      <div class="flow" id="flow1">
+        <div class="comp c-api" id="f1-user"><div class="comp-title">👤 用户 kubectl apply -f nginx.yaml</div><div class="comp-detail">发送 HTTP POST 请求到 API Server</div></div>
+        <div class="arrow" id="f1-a1">↓</div>
+        <div class="comp c-api" id="f1-api"><div class="comp-title">🌐 API Server</div><div class="comp-detail" id="f1-api-detail">接收请求 → 认证 → 鉴权 → 准入控制</div></div>
+        <div class="arrow" id="f1-a2">↓ 写入</div>
+        <div class="comp c-etcd" id="f1-etcd"><div class="comp-title">🗄️ etcd</div><div class="comp-detail" id="f1-etcd-detail">/registry/pods/default/nginx-xxx → {spec...}</div></div>
+        <div class="arrow" id="f1-a3">↓ Watch 事件</div>
+        <div style="display:flex;gap:8px;width:100%">
+          <div class="comp c-ctrl" id="f1-ctrl" style="flex:1"><div class="comp-title">⚙️ Deployment Controller</div><div class="comp-detail" id="f1-ctrl-detail">收到 ADDED 事件，创建 ReplicaSet</div></div>
+          <div class="comp c-sched" id="f1-sched" style="flex:1"><div class="comp-title">🎯 Scheduler</div><div class="comp-detail" id="f1-sched-detail">收到 Pod ADDED（nodeName为空）</div></div>
+        </div>
+        <div class="arrow" id="f1-a4">↓ 写入调度结果</div>
+        <div class="comp c-kubelet" id="f1-kubelet"><div class="comp-title">🤖 kubelet（node72）</div><div class="comp-detail" id="f1-kubelet-detail">Watch 到 Pod 分配给自己，创建容器</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">当前步骤</div>
+        <div style="font-size:0.75em;font-weight:700;color:#0f766e;margin-bottom:4px" id="f1-step-title">等待开始</div>
+        <div style="font-size:0.7em;color:#475569;line-height:1.7" id="f1-step-desc">点击下方按钮逐步演示完整流程</div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">etcd 数据变化</div>
+        <div class="kv-store">
+          <div class="kv-title">etcd KV Store</div>
+          <div class="kv-row"><span class="kv-key">/registry/pods/default/nginx</span><span class="kv-val" id="kv-pod">-</span><span class="kv-rev" id="kv-rev">rev:0</span></div>
+          <div class="kv-row"><span class="kv-key">/registry/deployments/default/nginx</span><span class="kv-val" id="kv-deploy">-</span><span class="kv-rev"></span></div>
+          <div class="kv-row"><span class="kv-key">Pod.spec.nodeName</span><span class="kv-val" id="kv-node">""（未调度）</span><span class="kv-rev"></span></div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">事件日志</div>
+        <div class="log" id="f1-log"></div>
+      </div>
+    </div>
+  </div>
+  <div class="explain" id="f1-explain">
+    <strong>完整数据流</strong>：kubectl apply → API Server（认证/鉴权/准入）→ 写入 etcd → Watch 事件推送给所有订阅者 → 控制器/调度器响应 → 再次写入 etcd → kubelet Watch 到变化 → 创建容器。整个过程是事件驱动的，每个组件只做自己的事情。
+  </div>
+  <div class="controls">
+    <button class="btn btn-gray" onclick="f1Reset()">↺ 重置</button>
+    <button class="btn btn-teal" id="f1-btn" onclick="f1Next()">▶ 下一步</button>
+  </div>
+</div>
+
+<!-- S2: Watch 机制详解 -->
+<div class="stage" id="s2">
+  <div class="two-col">
+    <div class="canvas">
+      <div class="canvas-title">Watch 机制详解 — 事件驱动，无需轮询</div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:0.7em;color:#475569;margin-bottom:8px">各组件 Watch 订阅的资源：</div>
+        <div class="watch-list" id="watch-list">
+          <div class="watch-item wi-normal" id="w-ctrl"><div class="wi-dot" id="wd-ctrl"></div><span class="wi-name">Deployment Controller</span><span class="wi-event" id="we-ctrl">Watch: deployments, replicasets, pods</span></div>
+          <div class="watch-item wi-normal" id="w-sched"><div class="wi-dot" id="wd-sched"></div><span class="wi-name">Scheduler</span><span class="wi-event" id="we-sched">Watch: pods（nodeName=空）</span></div>
+          <div class="watch-item wi-normal" id="w-kubelet"><div class="wi-dot" id="wd-kubelet"></div><span class="wi-name">kubelet（node72）</span><span class="wi-event" id="we-kubelet">Watch: pods（nodeName=node72）</span></div>
+          <div class="watch-item wi-normal" id="w-kube-proxy"><div class="wi-dot" id="wd-kube-proxy"></div><span class="wi-name">kube-proxy</span><span class="wi-event" id="we-kube-proxy">Watch: services, endpoints</span></div>
+        </div>
+      </div>
+      <div style="font-size:0.7em;color:#475569;margin-bottom:6px;font-weight:700">事件流（模拟 kubectl apply nginx）：</div>
+      <div class="event-stream" id="event-stream">
+        <div style="font-size:0.68em;color:#94a3b8;text-align:center;padding:8px">点击按钮触发事件流</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">ResourceVersion 机制</div>
+        <div style="font-size:0.7em;color:#475569;line-height:1.9">
+          <div>每次写操作 etcd 递增全局版本号</div>
+          <div>Watch 请求携带 <strong>resourceVersion</strong></div>
+          <div>从该版本之后的事件开始推送</div>
+          <div style="margin-top:4px;color:#0f766e">✅ 断线重连不丢事件</div>
+          <div style="color:#0f766e">✅ 控制器重启可续订</div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">当前 ResourceVersion</div>
+        <div style="font-size:1.4em;font-weight:700;color:#f97316;text-align:center;padding:8px" id="w-rev">12847</div>
+        <div style="font-size:0.68em;color:#64748b;text-align:center">每次写操作递增</div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">Watch vs 轮询对比</div>
+        <div style="font-size:0.7em;color:#475569;line-height:1.9">
+          <div style="color:#dc2626">❌ 轮询：每秒发请求</div>
+          <div style="color:#dc2626">&nbsp;&nbsp;浪费网络，延迟高</div>
+          <div style="color:#16a34a;margin-top:4px">✅ Watch：长连接推送</div>
+          <div style="color:#16a34a">&nbsp;&nbsp;即时响应，高效</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>Watch 机制原理</strong>：基于 HTTP/2 长连接，客户端发送 GET /api/v1/pods?watch=true&resourceVersion=xxx，etcd 保持连接，有变化时立即推送 JSON 事件流。API Server 在内存中维护 Watch Cache，减少对 etcd 的直接查询压力。
+  </div>
+  <div class="controls">
+    <button class="btn btn-gray" onclick="watchReset()">↺ 重置</button>
+    <button class="btn btn-teal" id="w-btn" onclick="watchNext()">▶ 触发 kubectl apply</button>
+  </div>
+</div>
+
+<!-- S3: 控制器循环 -->
+<div class="stage" id="s3">
+  <div class="canvas">
+    <div class="canvas-title">控制器调谐循环（Reconcile Loop）</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:0.7em;color:#475569;margin-bottom:8px">控制器核心逻辑：期望状态 vs 实际状态</div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;font-size:0.7em;font-family:monospace;color:#475569;line-height:2">
+          <div style="color:#7c3aed;font-weight:700">func Reconcile(ctx, req) {</div>
+          <div>&nbsp;&nbsp;<span style="color:#0f766e">// 1. 从 etcd 获取期望状态</span></div>
+          <div>&nbsp;&nbsp;desired := getFromEtcd(req)</div>
+          <div>&nbsp;&nbsp;</div>
+          <div>&nbsp;&nbsp;<span style="color:#0f766e">// 2. 获取实际状态</span></div>
+          <div>&nbsp;&nbsp;actual := getActualState()</div>
+          <div>&nbsp;&nbsp;</div>
+          <div>&nbsp;&nbsp;<span style="color:#0f766e">// 3. 计算差异并修正</span></div>
+          <div>&nbsp;&nbsp;<span style="color:#f97316">if desired != actual {</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;reconcile(desired, actual)</div>
+          <div>&nbsp;&nbsp;<span style="color:#f97316">}</span></div>
+          <div style="color:#7c3aed;font-weight:700">}</div>
+        </div>
+        <div style="margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;font-size:0.7em;color:#92400e">
+          <div style="font-weight:700;margin-bottom:4px">🔄 幂等性设计</div>
+          <div>无论 Reconcile 执行多少次，结果都一样。控制器只关注"现在应该是什么状态"，不关注"发生了什么事件"。</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:0.7em;color:#475569;margin-bottom:8px">Deployment Controller 调谐示例：</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;font-size:0.7em">
+            <div style="font-weight:700;color:#1d4ed8;margin-bottom:3px">期望状态（etcd）</div>
+            <div style="color:#475569">replicas: 3<br>image: nginx:v2</div>
+          </div>
+          <div style="text-align:center;font-size:1.2em;color:#94a3b8">↕ 对比</div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px;font-size:0.7em">
+            <div style="font-weight:700;color:#c2410c;margin-bottom:3px">实际状态（集群）</div>
+            <div style="color:#475569">replicas: 2（少1个）<br>image: nginx:v1（旧版本）</div>
+          </div>
+          <div style="text-align:center;font-size:1.2em;color:#0f766e">↓</div>
+          <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;font-size:0.7em">
+            <div style="font-weight:700;color:#15803d;margin-bottom:3px">控制器执行调谐</div>
+            <div style="color:#475569">创建1个Pod（补足replicas）<br>开始滚动更新镜像</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="canvas">
+    <div class="canvas-title">常见控制器职责</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#7e22ce;margin-bottom:5px">⚙️ Deployment Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: Deployments<br>管理 ReplicaSet<br>滚动更新</div>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#15803d;margin-bottom:5px">🔢 ReplicaSet Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: ReplicaSets<br>维持 Pod 副本数<br>Pod 死了自动重建</div>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#1d4ed8;margin-bottom:5px">🌐 Endpoints Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: Services + Pods<br>维护 Endpoints<br>更新 Service 后端</div>
+      </div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#c2410c;margin-bottom:5px">📦 StatefulSet Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: StatefulSets<br>有状态应用管理<br>稳定网络标识</div>
+      </div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#b91c1c;margin-bottom:5px">🔑 ServiceAccount Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: Namespaces<br>自动创建默认SA<br>Token 管理</div>
+      </div>
+      <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#065f46;margin-bottom:5px">🏷️ Node Controller</div>
+        <div style="color:#475569;line-height:1.8">Watch: Nodes<br>节点状态监控<br>超时驱逐 Pod</div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>控制器调谐循环（Reconcile Loop）</strong>：K8s 所有控制器都遵循同一个模式：获取期望状态 → 获取实际状态 → 计算差异 → 执行操作使实际状态趋近期望状态。这个过程是持续循环的，即使发生网络分区或组件重启，最终都会收敛到正确状态（最终一致性）。
+  </div>
+</div>
+
+<script>
+const stages = ['总览', '完整数据流', 'Watch机制', '控制器调谐'];
+let cur = 0;
+
+document.getElementById('tabs').innerHTML = stages.map((s,i) =>
+  `<div class="tab ${i===0?'active':''}" onclick="goStage(${i})">${s}</div>`).join('');
+
+function goStage(n) {
+  cur = n;
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+}
+
+// ==================== S1 完整流程 ====================
+const F1_STEPS = [
+  { title:'Step 1: 用户执行 kubectl apply', desc:'API Server 接收 HTTP POST 请求，开始认证→鉴权→准入控制验证',
+    highlight:'f1-api', arrow1:'active', kv_pod:'Pending（写入中）', kv_rev:'rev:12848',
+    log:['kubectl apply -f nginx.yaml', 'API Server 接收请求', '认证: Token 验证通过', '鉴权: RBAC 检查通过', '准入控制: 通过'] },
+  { title:'Step 2: 写入 etcd', desc:'验证通过后，Deployment 对象写入 etcd，ResourceVersion 递增',
+    highlight:'f1-etcd', arrow2:'active', kv_pod:'spec.replicas=3', kv_deploy:'nginx:v2', kv_rev:'rev:12849',
+    log:['写入 etcd: /registry/deployments/default/nginx', 'ResourceVersion: 12848 → 12849', 'etcd 写入成功'] },
+  { title:'Step 3: Watch 事件推送给控制器', desc:'etcd 通过 Watch 长连接推送 ADDED 事件给 Deployment Controller',
+    highlight:'f1-ctrl', arrow3:'active',
+    log:['Watch 事件: deployments ADDED', 'Deployment Controller 收到事件', '创建 ReplicaSet...', 'ReplicaSet 写入 etcd'] },
+  { title:'Step 4: Scheduler 监听到未调度 Pod', desc:'ReplicaSet Controller 创建 Pod 后，Scheduler Watch 到 nodeName 为空的 Pod',
+    highlight:'f1-sched', arrow3:'active', kv_node:'""（未调度）',
+    log:['ReplicaSet Controller 创建3个Pod', 'Pod 写入 etcd（nodeName=""）', 'Scheduler Watch 到未调度 Pod', '开始计算最优节点...'] },
+  { title:'Step 5: Scheduler 写入调度结果', desc:'Scheduler 选定 node72，将 nodeName=node72 写回 etcd',
+    highlight:'f1-kubelet', arrow4:'active', kv_node:'"node72"', kv_rev:'rev:12852',
+    log:['Scheduler 选定 node72（评分最高）', '写入 Pod.spec.nodeName=node72', 'kubelet(node72) Watch 到分配给自己的Pod', '开始拉取镜像，创建容器...', '✅ Pod Running！'] },
+];
+let f1Step = -1, f1Logs = [];
+
+function f1Reset() {
+  f1Step = -1; f1Logs = [];
+  document.getElementById('f1-btn').disabled = false;
+  document.getElementById('f1-btn').textContent = '▶ 下一步';
+  document.getElementById('f1-step-title').textContent = '等待开始';
+  document.getElementById('f1-step-desc').textContent = '点击按钮逐步演示完整流程';
+  ['f1-api','f1-etcd','f1-ctrl','f1-sched','f1-kubelet'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('c-highlight');
+  });
+  ['f1-a1','f1-a2','f1-a3','f1-a4'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('active');
+  });
+  document.getElementById('kv-pod').textContent = '-';
+  document.getElementById('kv-deploy').textContent = '-';
+  document.getElementById('kv-node').textContent = '""（未调度）';
+  document.getElementById('kv-rev').textContent = 'rev:0';
+  document.getElementById('f1-log').innerHTML = '';
+}
+
+function f1Next() {
+  f1Step++;
+  if(f1Step >= F1_STEPS.length) return;
+  const s = F1_STEPS[f1Step];
+  document.getElementById('f1-step-title').textContent = s.title;
+  document.getElementById('f1-step-desc').textContent = s.desc;
+  ['f1-api','f1-etcd','f1-ctrl','f1-sched','f1-kubelet'].forEach(id => {
+    document.getElementById(id)?.classList.remove('c-highlight');
+  });
+  if(s.highlight) document.getElementById(s.highlight)?.classList.add('c-highlight');
+  ['f1-a1','f1-a2','f1-a3','f1-a4'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+  if(s.arrow1) document.getElementById('f1-a1')?.classList.add('active');
+  if(s.arrow2) document.getElementById('f1-a2')?.classList.add('active');
+  if(s.arrow3) document.getElementById('f1-a3')?.classList.add('active');
+  if(s.arrow4) document.getElementById('f1-a4')?.classList.add('active');
+  if(s.kv_pod) { document.getElementById('kv-pod').textContent = s.kv_pod; document.getElementById('kv-pod').classList.add('kv-new'); setTimeout(()=>document.getElementById('kv-pod').classList.remove('kv-new'),600); }
+  if(s.kv_deploy) document.getElementById('kv-deploy').textContent = s.kv_deploy;
+  if(s.kv_node) document.getElementById('kv-node').textContent = s.kv_node;
+  if(s.kv_rev) document.getElementById('kv-rev').textContent = s.kv_rev;
+  const t = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  s.log.forEach(m => f1Logs.unshift({t,m}));
+  document.getElementById('f1-log').innerHTML = f1Logs.slice(0,15).map(l=>
+    `<div class="log-item"><span class="log-time">${l.t}</span><span class="${l.m.includes('✅')?'log-ok':l.m.includes('写入')||l.m.includes('Watch')?'log-orange':'log-info'}">${l.m}</span></div>`
+  ).join('');
+  if(f1Step === F1_STEPS.length-1) { document.getElementById('f1-btn').textContent='✅ 完成'; document.getElementById('f1-btn').disabled=true; }
+}
+
+// ==================== S2 Watch机制 ====================
+const WATCH_EVENTS = [
+  { type:'PUT', key:'/registry/deployments/default/nginx', rev:12849, target:'w-ctrl', msg:'Deployment Controller 收到 ADDED', wdot:'wd-ctrl', wevent:'收到 ▶ ADDED (deployments)' },
+  { type:'PUT', key:'/registry/replicasets/default/nginx-xxx', rev:12850, target:'w-ctrl', msg:'ReplicaSet 创建完成', wdot:'wd-ctrl', wevent:'收到 ▶ ADDED (replicasets)' },
+  { type:'PUT', key:'/registry/pods/default/nginx-1', rev:12851, target:'w-sched', msg:'Scheduler 发现未调度 Pod', wdot:'wd-sched', wevent:'收到 ▶ ADDED (pod, nodeName="")' },
+  { type:'PUT', key:'/registry/pods/default/nginx-1 [nodeName=node72]', rev:12852, target:'w-kubelet', msg:'kubelet 收到 Pod 分配', wdot:'wd-kubelet', wevent:'收到 ▶ MODIFIED (pod, nodeName="node72")' },
+  { type:'PUT', key:'/registry/services/default/nginx-svc', rev:12853, target:'w-kube-proxy', msg:'kube-proxy 更新 iptables 规则', wdot:'wd-kube-proxy', wevent:'收到 ▶ ADDED (service)' },
+];
+let watchStep = 0, watchEvents = [];
+
+function watchReset() {
+  watchStep = 0; watchEvents = [];
+  document.getElementById('w-btn').textContent = '▶ 触发 kubectl apply';
+  document.getElementById('w-btn').disabled = false;
+  document.getElementById('w-rev').textContent = '12847';
+  document.getElementById('event-stream').innerHTML = '<div style="font-size:0.68em;color:#94a3b8;text-align:center;padding:8px">点击按钮触发事件流</div>';
+  ['w-ctrl','w-sched','w-kubelet','w-kube-proxy'].forEach(id => {
+    document.getElementById(id).className = 'watch-item wi-normal';
+    document.getElementById('w'+id.slice(1)+'dot')?.classList.remove('active');
+  });
+  ['wd-ctrl','wd-sched','wd-kubelet','wd-kube-proxy'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('active');
+  });
+  ['we-ctrl','we-sched','we-kubelet','we-kube-proxy'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    const texts = ['Watch: deployments, replicasets, pods','Watch: pods（nodeName=空）','Watch: pods（nodeName=node72）','Watch: services, endpoints'];
+    if(el) el.textContent = texts[i];
+  });
+}
+
+function watchNext() {
+  if(watchStep >= WATCH_EVENTS.length) { document.getElementById('w-btn').disabled=true; return; }
+  const e = WATCH_EVENTS[watchStep];
+  document.getElementById('w-rev').textContent = e.rev;
+  watchEvents.unshift(e);
+  document.getElementById('event-stream').innerHTML = watchEvents.map(ev =>
+    `<div class="event-item ei-put">
+      <span class="ei-type" style="color:#16a34a">PUT</span>
+      <span class="ei-key">${ev.key}</span>
+      <span class="ei-time">rev:${ev.rev}</span>
+    </div>`
+  ).join('');
+  document.getElementById(e.target).className = 'watch-item wi-active';
+  document.getElementById(e.wdot).classList.add('active');
+  document.getElementById('w'+e.target.slice(1)+'event') && (document.getElementById('w'+e.target.slice(1)+'event').textContent = e.wevent);
+  const weId = 'we-' + e.target.replace('w-','');
+  const weEl = document.getElementById(weId);
+  if(weEl) weEl.textContent = '🔔 ' + e.wevent;
+  watchStep++;
+  if(watchStep >= WATCH_EVENTS.length) { document.getElementById('w-btn').textContent='✅ 完成'; document.getElementById('w-btn').disabled=true; }
+}
+
+f1Reset();
+</script>
+</body>
+</html>

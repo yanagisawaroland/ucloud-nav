@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes 调度流程动态图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .container {
+            position: relative;
+            width: 900px;
+            height: 600px;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 30px;
+            overflow: hidden;
+        }
+        
+        /* 节点样式 */
+        .node {
+            position: absolute;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            z-index: 10;
+            min-width: 120px;
+        }
+        
+        .node:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        
+        /* 节点类型颜色 */
+        .node-api { background: #e3f2fd; color: #1565c0; border: 2px solid #90caf9; }
+        .node-scheduler { background: #fff3e0; color: #e65100; border: 2px solid #ffcc80; }
+        .node-queue { background: #f3e5f5; color: #6a1b9a; border: 2px solid #ce93d8; }
+        .node-filter { background: #e8f5e9; color: #2e7d32; border: 2px solid #a5d6a7; }
+        .node-score { background: #e0f7fa; color: #00838f; border: 2px solid #80deea; }
+        .node-node { background: #fce4ec; color: #c2185b; border: 2px solid #f48fb1; }
+        .node-kubelet { background: #fff8e1; color: #f57f17; border: 2px solid #ffe082; }
+        
+        /* 节点位置 */
+        #n1 { left: 380px; top: 30px; }
+        #n2 { left: 380px; top: 100px; }
+        #n3 { left: 380px; top: 170px; }
+        #n4 { left: 200px; top: 260px; }
+        #n5 { left: 560px; top: 260px; }
+        #n6 { left: 380px; top: 350px; }
+        #n7 { left: 380px; top: 430px; }
+        #n8 { left: 380px; top: 510px; }
+        
+        /* 子节点 */
+        .sub-node {
+            position: absolute;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 11px;
+            background: #f8f9fa;
+            color: #555;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .sub-node.show { opacity: 1; }
+        
+        #s1 { left: 80px; top: 280px; }
+        #s2 { left: 80px; top: 320px; }
+        #s3 { left: 80px; top: 360px; }
+        #s4 { left: 700px; top: 280px; }
+        #s5 { left: 700px; top: 320px; }
+        #s6 { left: 700px; top: 360px; }
+        
+        /* 连接线 */
+        .connection {
+            position: absolute;
+            z-index: 1;
+        }
+        
+        svg.connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        path.line {
+            fill: none;
+            stroke: #bdc3c7;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+        
+        path.line.active {
+            stroke: #3498db;
+            stroke-width: 3;
+            stroke-dasharray: none;
+            animation: dash 1s linear infinite;
+        }
+        
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+        
+        /* 流动粒子 */
+        .particle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #3498db;
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.6);
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .particle.active {
+            opacity: 1;
+        }
+        
+        /* 状态标签 */
+        .status-label {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #ecf0f1;
+            color: #7f8c8d;
+            transition: all 0.3s;
+        }
+        
+        .status-label.running {
+            background: #d5f5e3;
+            color: #27ae60;
+        }
+        
+        .status-label.complete {
+            background: #d6eaf8;
+            color: #2980b9;
+        }
+        
+        /* 控制按钮 */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: #ecf0f1;
+            color: #555;
+        }
+        
+        .btn-secondary:hover {
+            background: #d5dbdb;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        /* 步骤说明 */
+        .step-info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            font-size: 13px;
+            color: #555;
+            max-width: 500px;
+            text-align: center;
+            border: 1px solid #eee;
+            z-index: 30;
+        }
+        
+        /* 节点高亮 */
+        .node.highlight {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.4); }
+        }
+        
+        /* 图例 */
+        .legend {
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            padding: 10px 14px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+            font-size: 11px;
+            z-index: 30;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+            gap: 6px;
+        }
+        
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+        }
+        
+        /* 成功标记 */
+        .success-mark {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #27ae60;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            z-index: 25;
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s ease;
+        }
+        
+        .success-mark.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Kubernetes 调度流程动态图</h1>
+    <p class="subtitle">展示 Pod 从创建到最终运行在 Node 上的完整调度过程</p>
+    
+    <div class="container" id="container">
+        <div class="status-label" id="statusLabel">准备就绪</div>
+        
+        <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#90caf9"></div>API / 控制器</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ffcc80"></div>调度器组件</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ce93d8"></div>队列 / 缓存</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#a5d6a7"></div>过滤阶段</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#80deea"></div>打分阶段</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f48fb1"></div>节点</div>
+        </div>
+        
+        <!-- SVG 连接线 -->
+        <svg class="connections" id="svgConnections">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#bdc3c7" />
+                </marker>
+                <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#3498db" />
+                </marker>
+            </defs>
+            <!-- 主流程线 -->
+            <path id="line1" class="line" d="M 440 75 L 440 105" marker-end="url(#arrowhead)" />
+            <path id="line2" class="line" d="M 440 145 L 440 175" marker-end="url(#arrowhead)" />
+            <path id="line3" class="line" d="M 440 215 L 280 270" marker-end="url(#arrowhead)" />
+            <path id="line4" class="line" d="M 440 215 L 600 270" marker-end="url(#arrowhead)" />
+            <path id="line5" class="line" d="M 280 300 L 440 365" marker-end="url(#arrowhead)" />
+            <path id="line6" class="line" d="M 600 300 L 440 365" marker-end="url(#arrowhead)" />
+            <path id="line7" class="line" d="M 440 405 L 440 435" marker-end="url(#arrowhead)" />
+            <path id="line8" class="line" d="M 440 475 L 440 505" marker-end="url(#arrowhead)" />
+            
+            <!-- 子节点连接线 -->
+            <path id="sub1" class="line" d="M 200 290 L 160 290" />
+            <path id="sub2" class="line" d="M 200 290 L 160 330" />
+            <path id="sub3" class="line" d="M 200 290 L 160 370" />
+            <path id="sub4" class="line" d="M 680 290 L 640 290" />
+            <path id="sub5" class="line" d="M 680 290 L 640 330" />
+            <path id="sub6" class="line" d="M 680 290 L 640 370" />
+        </svg>
+        
+        <!-- 节点 -->
+        <div class="node node-api" id="n1">📋 API Server<br><small>接收 Pod 创建请求</small></div>
+        <div class="node node-api" id="n2">📝 Controller Manager<br><small>创建 Pod 对象</small></div>
+        <div class="node node-queue" id="n3">📦 Scheduling Queue<br><small>待调度队列</small></div>
+        <div class="node node-filter" id="n4">🔍 Predicate (过滤)<br><small>筛选可行节点</small></div>
+        <div class="node node-score" id="n5">⭐ Priority (打分)<br><small>评估最优节点</small></div>
+        <div class="node node-scheduler" id="n6">🎯 Scheduler<br><small>选择最佳节点</small></div>
+        <div class="node node-node" id="n7">🖥️ Node (工作节点)<br><small>绑定 Pod 到节点</small></div>
+        <div class="node node-kubelet" id="n8">⚙️ Kubelet<br><small>创建容器并运行</small></div>
+        
+        <!-- 子节点 -->
+        <div class="sub-node" id="s1">NodeSelector</div>
+        <div class="sub-node" id="s2">资源充足性</div>
+        <div class="sub-node" id="s3">亲和性/反亲和性</div>
+        <div class="sub-node" id="s4">LeastRequested</div>
+        <div class="sub-node" id="s5">BalancedResource</div>
+        <div class="sub-node" id="s6">NodeAffinity</div>
+        
+        <!-- 成功标记 -->
+        <div class="success-mark" id="mark1" style="left:450px;top:65px;">✓</div>
+        <div class="success-mark" id="mark2" style="left:450px;top:135px;">✓</div>
+        <div class="success-mark" id="mark3" style="left:450px;top:205px;">✓</div>
+        <div class="success-mark" id="mark4" style="left:270px;top:250px;">✓</div>
+        <div class="success-mark" id="mark5" style="left:630px;top:250px;">✓</div>
+        <div class="success-mark" id="mark6" style="left:450px;top:395px;">✓</div>
+        <div class="success-mark" id="mark7" style="left:450px;top:465px;">✓</div>
+        <div class="success-mark" id="mark8" style="left:450px;top:545px;">✓</div>
+        
+        <!-- 流动粒子 -->
+        <div class="particle" id="p1"></div>
+        <div class="particle" id="p2"></div>
+        <div class="particle" id="p3"></div>
+        <div class="particle" id="p4"></div>
+        <div class="particle" id="p5"></div>
+        <div class="particle" id="p6"></div>
+        <div class="particle" id="p7"></div>
+        <div class="particle" id="p8"></div>
+        
+        <div class="step-info" id="stepInfo">点击"开始调度"按钮查看 Kubernetes Pod 调度流程</div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn btn-primary" id="startBtn" onclick="startAnimation()">▶ 开始调度</button>
+        <button class="btn btn-secondary" id="resetBtn" onclick="resetAnimation()">↺ 重置</button>
+    </div>
+
+    <script>
+        const steps = [
+            {
+                id: 1,
+                line: 'line1',
+                from: 'n1',
+                to: 'n2',
+                particle: 'p1',
+                mark: 'mark1',
+                info: '步骤 1: 用户通过 kubectl 或 API 向 API Server 提交 Pod 创建请求',
+                subNodes: []
+            },
+            {
+                id: 2,
+                line: 'line2',
+                from: 'n2',
+                to: 'n3',
+                particle: 'p2',
+                mark: 'mark2',
+                info: '步骤 2: Controller Manager 创建 Pod 对象，Pod 进入 Pending 状态，加入调度队列',
+                subNodes: []
+            },
+            {
+                id: 3,
+                line: 'line3',
+                from: 'n3',
+                to: 'n4',
+                particle: 'p3',
+                mark: 'mark3',
+                info: '步骤 3: Scheduler 从队列取出 Pod，进入 Predicate 过滤阶段，排除不符合条件的节点',
+                subNodes: ['s1', 's2', 's3']
+            },
+            {
+                id: 4,
+                line: 'line4',
+                from: 'n3',
+                to: 'n5',
+                particle: 'p4',
+                mark: 'mark4',
+                info: '步骤 4: 对通过过滤的节点进行 Priority 打分，评估节点优先级',
+                subNodes: ['s4', 's5', 's6']
+            },
+            {
+                id: 5,
+                line: 'line5',
+                from: 'n4',
+                to: 'n6',
+                particle: 'p5',
+                mark: 'mark5',
+                info: '步骤 5: 综合过滤和打分结果，Scheduler 选择得分最高的节点作为目标节点',
+                subNodes: []
+            },
+            {
+                id: 6,
+                line: 'line6',
+                from: 'n5',
+                to: 'n6',
+                particle: 'p6',
+                mark: 'mark6',
+                info: '步骤 6: Scheduler 将 Pod 绑定(Bind)到选定的 Node，更新 etcd',
+                subNodes: []
+            },
+            {
+                id: 7,
+                line: 'line7',
+                from: 'n6',
+                to: 'n7',
+                particle: 'p7',
+                mark: 'mark7',
+                info: '步骤 7: API Server 通知目标 Node，Kubelet 发现新的 Pod 分配',
+                subNodes: []
+            },
+            {
+                id: 8,
+                line: 'line8',
+                from: 'n7',
+                to: 'n8',
+                particle: 'p8',
+                mark: 'mark8',
+                info: '步骤 8: Kubelet 调用 CRI 创建容器，Pod 进入 Running 状态，调度完成！',
+                subNodes: []
+            }
+        ];
+        
+        let currentStep = 0;
+        let isRunning = false;
+        
+        function getElementCenter(id) {
+            const el = document.getElementById(id);
+            const rect = el.getBoundingClientRect();
+            const container = document.getElementById('container').getBoundingClientRect();
+            return {
+                x: rect.left - container.left + rect.width / 2,
+                y: rect.top - container.top + rect.height / 2
+            };
+        }
+        
+        function animateParticle(particleId, fromId, toId, duration) {
+            const particle = document.getElementById(particleId);
+            const from = getElementCenter(fromId);
+            const to = getElementCenter(toId);
+            
+            particle.style.left = (from.x - 6) + 'px';
+            particle.style.top = (from.y - 6) + 'px';
+            particle.classList.add('active');
+            
+            const startTime = performance.now();
+            
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const easeProgress = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+                
+                const currentX = from.x + (to.x - from.x) * easeProgress;
+                const currentY = from.y + (to.y - from.y) * easeProgress;
+                
+                particle.style.left = (currentX - 6) + 'px';
+                particle.style.top = (currentY - 6) + 'px';
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    particle.classList.remove('active');
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function highlightNode(nodeId) {
+            const node = document.getElementById(nodeId);
+            node.classList.add('highlight');
+            setTimeout(() => node.classList.remove('highlight'), 2000);
+        }
+        
+        function activateLine(lineId) {
+            const line = document.getElementById(lineId);
+            line.classList.add('active');
+            line.setAttribute('marker-end', 'url(#arrowhead-active)');
+        }
+        
+        function deactivateLine(lineId) {
+            const line = document.getElementById(lineId);
+            line.classList.remove('active');
+            line.setAttribute('marker-end', 'url(#arrowhead)');
+        }
+        
+        function showSubNodes(nodeIds) {
+            nodeIds.forEach(id => {
+                document.getElementById(id).classList.add('show');
+            });
+        }
+        
+        function hideSubNodes() {
+            document.querySelectorAll('.sub-node').forEach(el => el.classList.remove('show'));
+        }
+        
+        async function startAnimation() {
+            if (isRunning) return;
+            isRunning = true;
+            
+            const startBtn = document.getElementById('startBtn');
+            const statusLabel = document.getElementById('statusLabel');
+            const stepInfo = document.getElementById('stepInfo');
+            
+            startBtn.disabled = true;
+            statusLabel.textContent = '调度进行中...';
+            statusLabel.className = 'status-label running';
+            
+            for (let i = 0; i < steps.length; i++) {
+                currentStep = i;
+                const step = steps[i];
+                
+                // 更新信息
+                stepInfo.textContent = step.info;
+                
+                // 高亮起始节点
+                highlightNode(step.from);
+                
+                // 激活连接线
+                activateLine(step.line);
+                
+                // 显示子节点
+                if (step.subNodes.length > 0) {
+                    showSubNodes(step.subNodes);
+                }
+                
+                // 粒子动画
+                animateParticle(step.particle, step.from, step.to, 1200);
+                
+                // 等待粒子到达
+                await new Promise(r => setTimeout(r, 1200));
+                
+                // 显示成功标记
+                document.getElementById(step.mark).classList.add('show');
+                
+                // 高亮目标节点
+                highlightNode(step.to);
+                
+                // 保持连接线激活一段时间
+                await new Promise(r => setTimeout(r, 500));
+                
+                // 如果还有下一步，先不关闭当前线，形成路径效果
+                if (i < steps.length - 1) {
+                    // 保持当前线可见
+                }
+            }
+            
+            statusLabel.textContent = '调度完成 ✓';
+            statusLabel.className = 'status-label complete';
+            stepInfo.textContent = '🎉 Pod 调度流程全部完成！Pod 已成功运行在目标节点上。';
+            
+            isRunning = false;
+            startBtn.disabled = false;
+            startBtn.textContent = '▶ 再次演示';
+        }
+        
+        function resetAnimation() {
+            if (isRunning) return;
+            
+            currentStep = 0;
+            
+            // 重置所有状态
+            document.querySelectorAll('.line').forEach(line => {
+                line.classList.remove('active');
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+            });
+            
+            document.querySelectorAll('.success-mark').forEach(mark => {
+                mark.classList.remove('show');
+            });
+            
+            document.querySelectorAll('.particle').forEach(p => {
+                p.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.node').forEach(node => {
+                node.classList.remove('highlight');
+            });
+            
+            hideSubNodes();
+            
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = '准备就绪';
+            statusLabel.className = 'status-label';
+            
+            document.getElementById('stepInfo').textContent = '点击"开始调度"按钮查看 Kubernetes Pod 调度流程';
+            
+            const startBtn = document.getElementById('startBtn');
+            startBtn.textContent = '▶ 开始调度';
+            startBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>
+

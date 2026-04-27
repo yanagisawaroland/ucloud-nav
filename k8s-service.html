@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s Service 四种类型</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.15em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 7px 16px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.73em; font-weight: 600; transition: all 0.2s; }
+.tab.active { color: #fff; }
+.tab-ci { --c: #2563eb; } .tab-np { --c: #0891b2; } .tab-lb { --c: #059669; } .tab-en { --c: #7c3aed; }
+.tab.active.tab-ci { background: #2563eb; border-color: #2563eb; }
+.tab.active.tab-np { background: #0891b2; border-color: #0891b2; }
+.tab.active.tab-lb { background: #059669; border-color: #059669; }
+.tab.active.tab-en { background: #7c3aed; border-color: #7c3aed; }
+.tab:hover:not(.active) { border-color: #94a3b8; }
+
+.stage { display: none; max-width: 980px; margin: 0 auto; }
+.stage.active { display: block; }
+
+.two-col { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; font-weight: 700; }
+
+/* 网络层 */
+.net-layer { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.net-box { border-radius: 10px; padding: 10px 16px; text-align: center; border: 2px solid; width: 100%; max-width: 460px; transition: all 0.3s; }
+.nb-title { font-size: 0.78em; font-weight: 700; margin-bottom: 3px; }
+.nb-detail { font-size: 0.63em; opacity: 0.8; }
+.net-arrow { color: #94a3b8; font-size: 1em; text-align: center; }
+.net-arrow.active { color: #2563eb; font-weight: 700; }
+
+.nb-ext { background: #faf5ff; border-color: #a855f7; color: #7e22ce; }
+.nb-node { background: #fff7ed; border-color: #f97316; color: #c2410c; }
+.nb-svc { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+.nb-pod { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.nb-ext-svc { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.nb-gray { background: #f8fafc; border-color: #94a3b8; color: #475569; }
+.nb-lb { background: #ecfdf5; border-color: #10b981; color: #065f46; }
+
+/* Pod 组 */
+.pods-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 4px 0; }
+.pod-box { border-radius: 8px; padding: 7px 12px; text-align: center; border: 1px solid; font-size: 0.7em; min-width: 80px; }
+.pb-green { background: #f0fdf4; border-color: #86efac; color: #15803d; }
+.pb-blue { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.pod-name { font-weight: 700; margin-bottom: 1px; }
+.pod-ip { font-size: 0.85em; opacity: 0.8; font-family: monospace; }
+
+/* iptables 规则 */
+.rule-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 0.65em; font-family: monospace; color: #475569; line-height: 1.8; }
+.rule-highlight { color: #2563eb; font-weight: 700; }
+
+/* 面板 */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+.panel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+.kv { display: flex; justify-content: space-between; font-size: 0.7em; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #f1f5f9; }
+.kv:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.kv-label { color: #64748b; }
+.kv-val { font-weight: 700; color: #1e293b; font-family: monospace; font-size: 0.9em; }
+
+.use-case { display: flex; flex-direction: column; gap: 5px; }
+.uc-item { font-size: 0.7em; padding: 5px 8px; border-radius: 6px; }
+.uc-ok { background: #f0fdf4; color: #15803d; }
+.uc-warn { background: #fef3c7; color: #92400e; }
+.uc-err { background: #fef2f2; color: #b91c1c; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.73em; line-height: 1.7; color: #475569; max-width: 980px; margin-left: auto; margin-right: auto; }
+.explain strong { color: #1e293b; }
+
+/* 对比表 */
+.compare-table { width: 100%; border-collapse: collapse; font-size: 0.72em; }
+.compare-table th { background: #1e293b; color: #fff; padding: 8px 10px; text-align: left; }
+.compare-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+.compare-table tr:nth-child(even) td { background: #f8fafc; }
+.td-ok { color: #16a34a; font-weight: 700; }
+.td-warn { color: #d97706; font-weight: 700; }
+.td-err { color: #dc2626; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; }
+.btn-blue { background: #2563eb; color: #fff; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+</style>
+</head>
+<body>
+<h2>🌐 K8s Service 四种类型工作原理</h2>
+<p class="subtitle">ClusterIP · NodePort · LoadBalancer · ExternalName · 工作原理与使用场景</p>
+
+<div class="tabs">
+  <div class="tab tab-ci active" onclick="showTab(0)">① ClusterIP</div>
+  <div class="tab tab-np" onclick="showTab(1)">② NodePort</div>
+  <div class="tab tab-lb" onclick="showTab(2)">③ LoadBalancer</div>
+  <div class="tab tab-en" onclick="showTab(3)">④ ExternalName</div>
+  <div class="tab" onclick="showTab(4)" style="border-color:#64748b">📊 对比总结</div>
+</div>
+
+<!-- ClusterIP -->
+<div class="stage active" id="s0">
+  <div class="two-col">
+    <div>
+      <div class="canvas">
+        <div class="canvas-title">ClusterIP — 集群内部访问</div>
+        <div class="net-layer">
+          <div class="net-box nb-gray">
+            <div class="nb-title">❌ 集群外部无法访问</div>
+            <div class="nb-detail">ClusterIP 仅在集群内部可达</div>
+          </div>
+          <div class="net-arrow">↓ 集群内部</div>
+          <div class="net-box nb-svc">
+            <div class="nb-title">🔵 Service（ClusterIP）</div>
+            <div class="nb-detail">nginx-svc → 10.96.100.88:80（虚拟IP，不真实存在）</div>
+          </div>
+          <div class="net-arrow active">↓ kube-proxy iptables/ipvs 规则</div>
+          <div class="pods-row">
+            <div class="pod-box pb-green"><div class="pod-name">nginx-1</div><div class="pod-ip">10.244.1.5</div></div>
+            <div class="pod-box pb-green"><div class="pod-name">nginx-2</div><div class="pod-ip">10.244.2.8</div></div>
+            <div class="pod-box pb-green"><div class="pod-name">nginx-3</div><div class="pod-ip">10.244.1.9</div></div>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div class="rule-box">
+            <div># iptables NAT 规则</div>
+            <div>-A KUBE-SVC-xxx -m statistic --mode random --probability 0.33 \</div>
+            <div>&nbsp;&nbsp;-j KUBE-SEP-<span class="rule-highlight">nginx-1</span> (→ 10.244.1.5:80)</div>
+            <div>-A KUBE-SVC-xxx -m statistic --mode random --probability 0.50 \</div>
+            <div>&nbsp;&nbsp;-j KUBE-SEP-<span class="rule-highlight">nginx-2</span> (→ 10.244.2.8:80)</div>
+            <div>-A KUBE-SVC-xxx -j KUBE-SEP-<span class="rule-highlight">nginx-3</span> (→ 10.244.1.9:80)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">服务信息</div>
+        <div class="kv"><span class="kv-label">类型</span><span class="kv-val">ClusterIP</span></div>
+        <div class="kv"><span class="kv-label">虚拟IP</span><span class="kv-val">10.96.100.88</span></div>
+        <div class="kv"><span class="kv-label">端口</span><span class="kv-val">80/TCP</span></div>
+        <div class="kv"><span class="kv-label">DNS</span><span class="kv-val">nginx-svc.default</span></div>
+        <div class="kv"><span class="kv-label">外部访问</span><span class="kv-val" style="color:#dc2626">❌ 不支持</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">适用场景</div>
+        <div class="use-case">
+          <div class="uc-item uc-ok">✅ 微服务内部调用</div>
+          <div class="uc-item uc-ok">✅ 数据库服务</div>
+          <div class="uc-item uc-ok">✅ 默认类型，最常用</div>
+          <div class="uc-item uc-err">❌ 不能从外部直接访问</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>ClusterIP 工作原理</strong>：kube-proxy 在每个节点上配置 iptables/ipvs 规则，将访问 ClusterIP:Port 的流量 DNAT 到后端 Pod IP。ClusterIP 是虚拟 IP，不对应任何网卡，只存在于 iptables 规则中。Pod 通过 DNS（CoreDNS）解析 Service 名称得到 ClusterIP。
+  </div>
+</div>
+
+<!-- NodePort -->
+<div class="stage" id="s1">
+  <div class="two-col">
+    <div>
+      <div class="canvas">
+        <div class="canvas-title">NodePort — 通过节点端口暴露服务</div>
+        <div class="net-layer">
+          <div class="net-box nb-ext">
+            <div class="nb-title">🌍 外部用户 / 浏览器</div>
+            <div class="nb-detail">访问任意节点 IP + NodePort</div>
+          </div>
+          <div class="net-arrow active">↓ 访问任意节点 10.20.50.72:32080</div>
+          <div class="net-box nb-node">
+            <div class="nb-title">🖥️ 节点（任意节点都可以）</div>
+            <div class="nb-detail">kube-proxy 监听 NodePort 32080，转发到 Service</div>
+          </div>
+          <div class="net-arrow active">↓ iptables DNAT → ClusterIP</div>
+          <div class="net-box nb-svc">
+            <div class="nb-title">🔵 Service（ClusterIP 10.96.100.88:80）</div>
+          </div>
+          <div class="net-arrow active">↓ 负载均衡</div>
+          <div class="pods-row">
+            <div class="pod-box pb-green"><div class="pod-name">nginx-1</div><div class="pod-ip">10.244.1.5</div></div>
+            <div class="pod-box pb-green"><div class="pod-name">nginx-2</div><div class="pod-ip">10.244.2.8</div></div>
+            <div class="pod-box pb-green"><div class="pod-name">nginx-3</div><div class="pod-ip">10.244.1.9</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">服务信息</div>
+        <div class="kv"><span class="kv-label">类型</span><span class="kv-val">NodePort</span></div>
+        <div class="kv"><span class="kv-label">ClusterIP</span><span class="kv-val">10.96.100.88</span></div>
+        <div class="kv"><span class="kv-label">NodePort</span><span class="kv-val">32080</span></div>
+        <div class="kv"><span class="kv-label">范围</span><span class="kv-val">30000-32767</span></div>
+        <div class="kv"><span class="kv-label">外部访问</span><span class="kv-val" style="color:#16a34a">✅ 支持</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">适用场景</div>
+        <div class="use-case">
+          <div class="uc-item uc-ok">✅ 开发测试环境临时暴露</div>
+          <div class="uc-item uc-ok">✅ Kind 环境访问服务</div>
+          <div class="uc-item uc-warn">⚠️ 端口范围受限</div>
+          <div class="uc-item uc-warn">⚠️ 生产不推荐（安全性低）</div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">访问示例</div>
+        <div style="font-size:0.68em;font-family:monospace;color:#475569;line-height:1.8">
+          curl http://10.20.50.72:32080/<br>
+          curl http://10.20.50.73:32080/<br>
+          <span style="color:#16a34a"># 任意节点都可以！</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>NodePort 工作原理</strong>：在 ClusterIP 基础上，kube-proxy 在每个节点上额外监听一个固定端口（NodePort，范围30000-32767）。访问任意节点的 NodePort，都会被转发到对应 Service 的 Pod。注意：即使 Pod 不在该节点上，流量也能正确路由（跨节点转发）。
+  </div>
+</div>
+
+<!-- LoadBalancer -->
+<div class="stage" id="s2">
+  <div class="two-col">
+    <div>
+      <div class="canvas">
+        <div class="canvas-title">LoadBalancer — 云/MetalLB 负载均衡</div>
+        <div class="net-layer">
+          <div class="net-box nb-ext">
+            <div class="nb-title">🌍 外部用户</div>
+            <div class="nb-detail">访问 VIP（External IP）</div>
+          </div>
+          <div class="net-arrow active">↓ 访问 10.20.50.50:80</div>
+          <div class="net-box nb-lb">
+            <div class="nb-title">⚖️ LoadBalancer（MetalLB VIP）</div>
+            <div class="nb-detail">B环境：10.20.50.50 · 云环境：云厂商LB</div>
+          </div>
+          <div class="net-arrow active">↓ 转发到 NodePort</div>
+          <div class="net-box nb-node">
+            <div class="nb-title">🖥️ 节点（NodePort）</div>
+            <div class="nb-detail">master51(10.20.50.51) / node52(10.20.50.52)</div>
+          </div>
+          <div class="net-arrow active">↓ ClusterIP → Pod</div>
+          <div class="pods-row">
+            <div class="pod-box pb-green"><div class="pod-name">nginx-1</div><div class="pod-ip">10.42.0.5</div></div>
+            <div class="pod-box pb-green"><div class="pod-name">nginx-2</div><div class="pod-ip">10.42.1.8</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">服务信息（B环境）</div>
+        <div class="kv"><span class="kv-label">类型</span><span class="kv-val">LoadBalancer</span></div>
+        <div class="kv"><span class="kv-label">External IP</span><span class="kv-val">10.20.50.50</span></div>
+        <div class="kv"><span class="kv-label">实现</span><span class="kv-val">MetalLB v0.12.1</span></div>
+        <div class="kv"><span class="kv-label">协议</span><span class="kv-val">ARP/BGP</span></div>
+        <div class="kv"><span class="kv-label">外部访问</span><span class="kv-val" style="color:#16a34a">✅ 最优雅</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">适用场景</div>
+        <div class="use-case">
+          <div class="uc-item uc-ok">✅ 生产环境首选</div>
+          <div class="uc-item uc-ok">✅ 云环境自动分配IP</div>
+          <div class="uc-item uc-ok">✅ 裸金属用MetalLB</div>
+          <div class="uc-item uc-warn">⚠️ 需要云厂商支持或MetalLB</div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">MetalLB 工作模式</div>
+        <div style="font-size:0.7em;color:#475569;line-height:1.9">
+          <div><strong>Layer2（ARP）</strong>：VIP 绑定一个节点，该节点响应 ARP</div>
+          <div><strong>BGP</strong>：所有节点通告 VIP 路由，真正多活</div>
+          <div style="color:#059669;margin-top:4px">B环境：Layer2 模式（ipvs+strictARP）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>LoadBalancer 工作原理</strong>：在 NodePort 基础上，由云厂商（AWS/GCP/阿里云）或 MetalLB 分配一个外部 IP（VIP）。外部流量打到 VIP，由 LB 转发到各节点 NodePort，再路由到 Pod。k3s 环境用 MetalLB 实现裸金属 LoadBalancer，B 环境 VIP 为 10.20.50.50。
+  </div>
+</div>
+
+<!-- ExternalName -->
+<div class="stage" id="s3">
+  <div class="two-col">
+    <div>
+      <div class="canvas">
+        <div class="canvas-title">ExternalName — 集群内访问外部服务</div>
+        <div class="net-layer">
+          <div class="net-box nb-pod">
+            <div class="nb-title">📦 集群内 Pod</div>
+            <div class="nb-detail">访问 mysql-svc.default.svc.cluster.local</div>
+          </div>
+          <div class="net-arrow active">↓ CoreDNS CNAME 解析</div>
+          <div class="net-box nb-svc">
+            <div class="nb-title">🔵 Service（ExternalName）</div>
+            <div class="nb-detail">mysql-svc → CNAME → db.example.com</div>
+          </div>
+          <div class="net-arrow active">↓ DNS 解析到外部地址</div>
+          <div class="net-box nb-ext-svc">
+            <div class="nb-title">🌍 外部服务</div>
+            <div class="nb-detail">db.example.com（RDS/外部MySQL等）</div>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div class="rule-box">
+            <div style="color:#7c3aed;font-weight:700"># ExternalName Service YAML</div>
+            <div>apiVersion: v1</div>
+            <div>kind: Service</div>
+            <div>spec:</div>
+            <div>&nbsp;&nbsp;type: <span class="rule-highlight">ExternalName</span></div>
+            <div>&nbsp;&nbsp;externalName: <span class="rule-highlight">db.example.com</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-card">
+        <div class="panel-title">服务信息</div>
+        <div class="kv"><span class="kv-label">类型</span><span class="kv-val">ExternalName</span></div>
+        <div class="kv"><span class="kv-label">ClusterIP</span><span class="kv-val">None</span></div>
+        <div class="kv"><span class="kv-label">实现</span><span class="kv-val">DNS CNAME</span></div>
+        <div class="kv"><span class="kv-label">kube-proxy</span><span class="kv-val">不参与</span></div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">适用场景</div>
+        <div class="use-case">
+          <div class="uc-item uc-ok">✅ 访问外部数据库（RDS）</div>
+          <div class="uc-item uc-ok">✅ 访问第三方 API</div>
+          <div class="uc-item uc-ok">✅ 迁移期间桥接内外服务</div>
+          <div class="uc-item uc-warn">⚠️ 纯 DNS，无负载均衡</div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-title">与其他类型对比</div>
+        <div style="font-size:0.7em;color:#475569;line-height:1.9">
+          <div>无 ClusterIP，无 iptables 规则</div>
+          <div>CoreDNS 返回 CNAME 记录</div>
+          <div>Pod 自行解析外部域名</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>ExternalName 工作原理</strong>：不创建 ClusterIP，不配置 iptables 规则。CoreDNS 为该 Service 返回 CNAME 记录，指向 externalName 字段的域名。Pod 访问 Service 名称时，DNS 解析到外部域名，再由外部 DNS 解析到实际 IP。常用于将外部数据库/服务映射为集群内的 Service 名称，方便迁移和切换。
+  </div>
+</div>
+
+<!-- 对比总结 -->
+<div class="stage" id="s4">
+  <div class="canvas">
+    <div class="canvas-title">四种 Service 类型对比总结</div>
+    <table class="compare-table">
+      <tr>
+        <th>类型</th><th>外部访问</th><th>实现方式</th><th>适用场景</th><th>我们的环境</th>
+      </tr>
+      <tr>
+        <td><strong>ClusterIP</strong></td>
+        <td class="td-err">❌ 仅集群内</td>
+        <td>iptables DNAT</td>
+        <td>微服务内部通信、数据库</td>
+        <td>所有环境默认使用</td>
+      </tr>
+      <tr>
+        <td><strong>NodePort</strong></td>
+        <td class="td-warn">⚠️ 节点IP+端口</td>
+        <td>iptables + 节点端口</td>
+        <td>开发测试、Kind环境</td>
+        <td>D环境访问ArgoCD</td>
+      </tr>
+      <tr>
+        <td><strong>LoadBalancer</strong></td>
+        <td class="td-ok">✅ 独立VIP</td>
+        <td>云LB / MetalLB</td>
+        <td>生产环境对外暴露</td>
+        <td>B环境 MetalLB 10.20.50.50</td>
+      </tr>
+      <tr>
+        <td><strong>ExternalName</strong></td>
+        <td>-</td>
+        <td>DNS CNAME</td>
+        <td>访问外部服务</td>
+        <td>对接外部RDS等</td>
+      </tr>
+    </table>
+  </div>
+  <div class="canvas">
+    <div class="canvas-title">流量路径层次对比</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#1d4ed8;margin-bottom:6px">ClusterIP</div>
+        <div style="color:#475569;line-height:1.8">Pod A<br>↓<br>iptables DNAT<br>↓<br>Pod B</div>
+      </div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#c2410c;margin-bottom:6px">NodePort</div>
+        <div style="color:#475569;line-height:1.8">外部<br>↓<br>节点IP:32080<br>↓<br>ClusterIP<br>↓<br>Pod</div>
+      </div>
+      <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:10px;font-size:0.7em">
+        <div style="font-weight:700;color:#065f46;margin-bottom:6px">LoadBalancer</div>
+        <div style="color:#475569;line-height:1.8">外部<br>↓<br>VIP(MetalLB)<br>↓<br>NodePort<br>↓<br>ClusterIP<br>↓<br>Pod</div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>选型建议</strong>：集群内部服务间调用用 ClusterIP（默认）；开发测试临时暴露用 NodePort；生产环境对外暴露用 LoadBalancer（云环境自动分配/裸金属用MetalLB）；需要访问外部服务用 ExternalName。Istio IngressGateway 本质上是一个 LoadBalancer 类型的 Service，B 环境的 VIP 10.20.50.50 就是 Istio Gateway 的 LoadBalancer IP。
+  </div>
+</div>
+
+<script>
+function showTab(n) {
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+}
+</script>
+</body>
+</html>

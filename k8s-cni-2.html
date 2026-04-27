@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K8s CNI 网络工作原理</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 16px; }
+h2 { text-align: center; font-size: 1.1em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #64748b; font-size: 0.75em; margin-bottom: 16px; }
+
+.tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 6px 14px; border-radius: 16px; border: 1px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; font-size: 0.73em; font-weight: 600; transition: all 0.2s; }
+.tab.active { background: #0891b2; color: #fff; border-color: #0891b2; }
+
+.stage { display: none; max-width: 960px; margin: 0 auto; }
+.stage.active { display: block; }
+.canvas { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.canvas-title { font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: 700; }
+
+/* 节点 */
+.nodes-wrap { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.node-wrap { background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 12px; min-width: 200px; flex: 1; }
+.node-title { font-size: 0.75em; font-weight: 700; color: #1e293b; margin-bottom: 8px; text-align: center; padding: 4px; background: #e2e8f0; border-radius: 6px; }
+.pod-wrap { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px; margin-bottom: 6px; }
+.pod-title { font-size: 0.68em; font-weight: 700; color: #1d4ed8; margin-bottom: 4px; }
+.pod-ip { font-size: 0.62em; color: #3b82f6; font-family: monospace; }
+.veth { font-size: 0.62em; color: #7c3aed; margin-top: 3px; }
+.bridge { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 6px 8px; text-align: center; font-size: 0.68em; color: #92400e; font-weight: 700; margin-top: 4px; }
+.node-ip { font-size: 0.65em; color: #475569; text-align: center; margin-top: 4px; }
+
+/* 网络层 */
+.network-layer { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 10px; padding: 10px; text-align: center; margin: 8px 0; }
+.network-title { font-size: 0.72em; font-weight: 700; color: #15803d; }
+.network-desc { font-size: 0.62em; color: #16a34a; margin-top: 2px; }
+
+/* 流量路径 */
+.path-step { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.72em; }
+.path-arrow { color: #94a3b8; font-size: 1.1em; flex-shrink: 0; }
+.path-active { background: #dbeafe; border: 1px solid #bfdbfe; }
+.path-label { font-weight: 600; color: #1d4ed8; min-width: 100px; }
+.path-detail { color: #475569; }
+
+.explain { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 0.74em; line-height: 1.7; color: #475569; }
+.explain strong { color: #1e293b; }
+
+.compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.compare-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; text-align: center; }
+.compare-title { font-size: 0.75em; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+.compare-item { font-size: 0.65em; color: #475569; margin-bottom: 3px; text-align: left; }
+
+.controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.btn { padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.76em; font-weight: 600; }
+.btn-primary { background: #0891b2; color: #fff; }
+.btn-primary:hover { background: #0e7490; }
+.btn-gray { background: #e2e8f0; color: #475569; }
+</style>
+
+</head>
+<body>
+<h2>🌐 K8s CNI 网络工作原理</h2>
+<p class="subtitle">Pod 网络创建、同节点通信、跨节点通信全流程</p>
+
+<div class="tabs" id="tabs"></div>
+
+<!-- Stage 0: CNI 概述 -->
+
+<div class="stage active" id="s0">
+  <div class="canvas">
+    <div class="canvas-title">CNI 是什么</div>
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="display:inline-block;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:10px 20px;font-size:0.8em;font-weight:700;color:#1d4ed8">CNI = Container Network Interface</div>
+      <div style="font-size:0.72em;color:#64748b;margin-top:6px">K8s 网络插件标准接口，负责 Pod 网络的创建和删除</div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:0.72em;text-align:center;min-width:120px">
+        <div style="font-size:1.5em;margin-bottom:4px">📋</div>
+        <div style="font-weight:700;margin-bottom:2px">kubelet 调用</div>
+        <div style="color:#64748b">Pod 创建/删除时</div>
+      </div>
+      <div style="font-size:1.2em;color:#94a3b8;align-self:center">→</div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:0.72em;text-align:center;min-width:120px">
+        <div style="font-size:1.5em;margin-bottom:4px">🔌</div>
+        <div style="font-weight:700;margin-bottom:2px">CNI 插件</div>
+        <div style="color:#64748b">Flannel/Calico等</div>
+      </div>
+      <div style="font-size:1.2em;color:#94a3b8;align-self:center">→</div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:0.72em;text-align:center;min-width:120px">
+        <div style="font-size:1.5em;margin-bottom:4px">🌐</div>
+        <div style="font-weight:700;margin-bottom:2px">网络配置</div>
+        <div style="color:#64748b">veth/bridge/路由</div>
+      </div>
+    </div>
+    <div class="compare-grid">
+      <div class="compare-card" style="border-color:#3b82f6">
+        <div class="compare-title">🦩 Flannel</div>
+        <div class="compare-item">✅ 简单易用</div>
+        <div class="compare-item">✅ k3s默认</div>
+        <div class="compare-item">❌ 无网络策略</div>
+        <div class="compare-item">原理：VXLAN隧道</div>
+      </div>
+      <div class="compare-card" style="border-color:#f59e0b">
+        <div class="compare-title">🐯 Calico</div>
+        <div class="compare-item">✅ 网络策略</div>
+        <div class="compare-item">✅ 高性能BGP</div>
+        <div class="compare-item">✅ 生产首选</div>
+        <div class="compare-item">原理：BGP路由</div>
+      </div>
+      <div class="compare-card" style="border-color:#8b5cf6">
+        <div class="compare-title">🐝 Cilium</div>
+        <div class="compare-item">✅ eBPF技术</div>
+        <div class="compare-item">✅ 最高性能</div>
+        <div class="compare-item">✅ L7策略</div>
+        <div class="compare-item">原理：eBPF内核</div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>CNI 做了什么？</strong><br>
+    Pod 创建时：创建 veth pair（虚拟网卡对）→ 一端放入 Pod 网络命名空间（eth0）→ 另一端连接节点网桥（cni0/cbr0）→ 分配 IP → 设置路由。
+    Pod 删除时：清理 veth pair 和路由规则。
+  </div>
+</div>
+
+<!-- Stage 1: Pod 网络创建 -->
+
+<div class="stage" id="s1">
+  <div class="canvas">
+    <div class="canvas-title">Pod 网络创建过程</div>
+    <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div class="path-step path-active"><span class="path-label">1. kubelet</span><span class="path-detail">调用 CNI ADD 命令</span></div>
+        <div class="path-step path-active"><span class="path-label">2. 创建 veth pair</span><span class="path-detail">eth0（Pod内）+ vethxxx（节点）</span></div>
+        <div class="path-step path-active"><span class="path-label">3. 连接网桥</span><span class="path-detail">vethxxx 插入 cni0 网桥</span></div>
+        <div class="path-step path-active"><span class="path-label">4. 分配 IP</span><span class="path-detail">从 PodCIDR 分配 10.244.1.5/24</span></div>
+        <div class="path-step path-active"><span class="path-label">5. 设置路由</span><span class="path-detail">Pod内默认路由 → 网关 10.244.1.1</span></div>
+        <div class="path-step path-active"><span class="path-label">6. 返回结果</span><span class="path-detail">告知 kubelet IP 已配置</span></div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div class="node-wrap">
+          <div class="node-title">🖥️ node72（10.20.50.72）</div>
+          <div class="pod-wrap">
+            <div class="pod-title">📦 nginx Pod</div>
+            <div class="pod-ip">IP: 10.244.1.5/24</div>
+            <div class="veth">eth0 ↕ veth pair ↕ veth3a8f2c</div>
+          </div>
+          <div class="bridge">cni0 网桥（10.244.1.1/24）</div>
+          <div class="node-ip">节点网卡 eth0（10.20.50.72）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>veth pair（虚拟网卡对）</strong>：成对出现，从一端发出的数据包必然从另一端收到，类似一根网线的两端。Pod 内的 eth0 和节点上的 vethxxx 就是一对 veth，通过网桥连接所有 Pod。
+  </div>
+</div>
+
+<!-- Stage 2: 同节点通信 -->
+
+<div class="stage" id="s2">
+  <div class="canvas">
+    <div class="canvas-title">同节点 Pod 间通信（走网桥，不出节点）</div>
+    <div class="node-wrap" style="max-width:500px;margin:0 auto">
+      <div class="node-title">🖥️ node72</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:6px">
+        <div class="pod-wrap" style="flex:1">
+          <div class="pod-title">📦 Pod A</div>
+          <div class="pod-ip">10.244.1.5</div>
+          <div class="veth">eth0</div>
+        </div>
+        <div class="pod-wrap" style="flex:1">
+          <div class="pod-title">📦 Pod B</div>
+          <div class="pod-ip">10.244.1.8</div>
+          <div class="veth">eth0</div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:0.72em;color:#7c3aed;margin-bottom:4px">vethA ↕　　　↕ vethB</div>
+      <div class="bridge">cni0 网桥（L2 转发）</div>
+    </div>
+    <div style="margin-top:10px">
+      <div class="path-step path-active"><span class="path-label">① Pod A 发包</span><span class="path-detail">src:10.244.1.5 → dst:10.244.1.8</span></div>
+      <div class="path-step path-active"><span class="path-label">② 经 vethA</span><span class="path-detail">出 Pod A 网络命名空间</span></div>
+      <div class="path-step path-active"><span class="path-label">③ cni0 网桥</span><span class="path-detail">L2 MAC 地址学习，转发到 vethB</span></div>
+      <div class="path-step path-active"><span class="path-label">④ 经 vethB</span><span class="path-detail">进入 Pod B 网络命名空间</span></div>
+      <div class="path-step path-active"><span class="path-label">⑤ Pod B 收包</span><span class="path-detail">✅ 完成，全程在节点内，不经过物理网络</span></div>
+    </div>
+  </div>
+  <div class="explain">
+    <strong>同节点通信</strong>：通过 Linux 网桥（bridge）实现，类似交换机的 MAC 地址学习转发。数据包不需要经过物理网卡，延迟极低（微秒级）。
+  </div>
+</div>
+
+<!-- Stage 3: 跨节点通信 Flannel -->
+
+<div class="stage" id="s3">
+  <div class="canvas">
+    <div class="canvas-title">跨节点通信（Flannel VXLAN 模式）</div>
+    <div class="nodes-wrap">
+      <div class="node-wrap">
+        <div class="node-title">🖥️ node72（10.20.50.72）</div>
+        <div class="pod-wrap">
+          <div class="pod-title">📦 Pod A</div>
+          <div class="pod-ip">10.244.1.5</div>
+        </div>
+        <div class="bridge">cni0（10.244.1.1）</div>
+        <div style="background:#faf5ff;border:1px solid #a855f7;border-radius:6px;padding:5px;font-size:0.65em;color:#7e22ce;margin-top:4px;text-align:center">flannel.1（VXLAN设备）<br>封装原始数据包</div>
+        <div class="node-ip">eth0（10.20.50.72）→ 物理网络</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px">
+        <div style="font-size:0.65em;color:#64748b;text-align:center">UDP封装<br>VXLAN隧道</div>
+        <div style="font-size:1.5em;color:#0891b2">⟷</div>
+        <div style="font-size:0.65em;color:#64748b;text-align:center">物理网络<br>10.20.50.x</div>
+      </div>
+      <div class="node-wrap">
+        <div class="node-title">🖥️ node73（10.20.50.73）</div>
+        <div class="pod-wrap">
+          <div class="pod-title">📦 Pod B</div>
+          <div class="pod-ip">10.244.2.8</div>
+        </div>
+        <div class="bridge">cni0（10.244.2.1）</div>
+        <div style="background:#faf5ff;border:1px solid #a855f7;border-radius:6px;padding:5px;font-size:0.65em;color:#7e22ce;margin-top:4px;text-align:center">flannel.1（VXLAN设备）<br>解封装数据包</div>
+        <div class="node-ip">eth0（10.20.50.73）← 物理网络</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:0.7em;color:#475569;background:#f8fafc;padding:8px;border-radius:8px">
+      <strong>VXLAN 封装：</strong> 原始包（Pod IP）外面套一层 UDP 包（节点 IP），穿越物理网络，对端解封装后转发给目标 Pod
+    </div>
+  </div>
+  <div class="explain">
+    <strong>跨节点通信（Flannel VXLAN）</strong>：每个节点分配不同的 PodCIDR（10.244.1.0/24, 10.244.2.0/24...），跨节点数据包通过 VXLAN 封装在 UDP 包里穿越物理网络。flannel.1 是虚拟网络设备，负责封装/解封装。
+  </div>
+</div>
+
+<!-- Stage 4: Calico BGP -->
+
+<div class="stage" id="s4">
+  <div class="canvas">
+    <div class="canvas-title">跨节点通信（Calico BGP 模式）— 无封装，性能更高</div>
+    <div class="nodes-wrap">
+      <div class="node-wrap">
+        <div class="node-title">🖥️ node72（10.20.50.72）</div>
+        <div class="pod-wrap">
+          <div class="pod-title">📦 Pod A</div>
+          <div class="pod-ip">10.244.1.5</div>
+        </div>
+        <div style="background:#dcfce7;border:1px solid #22c55e;border-radius:6px;padding:5px;font-size:0.65em;color:#15803d;margin-top:4px;text-align:center">路由表<br>10.244.2.0/24 → 10.20.50.73</div>
+        <div class="node-ip">eth0（10.20.50.72）</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px">
+        <div style="font-size:0.65em;color:#64748b;text-align:center">BGP 路由<br>直接转发</div>
+        <div style="font-size:1.5em;color:#22c55e">⟷</div>
+        <div style="font-size:0.65em;color:#64748b;text-align:center">无封装<br>性能最优</div>
+      </div>
+      <div class="node-wrap">
+        <div class="node-title">🖥️ node73（10.20.50.73）</div>
+        <div class="pod-wrap">
+          <div class="pod-title">📦 Pod B</div>
+          <div class="pod-ip">10.244.2.8</div>
+        </div>
+        <div style="background:#dcfce7;border:1px solid #22c55e;border-radius:6px;padding:5px;font-size:0.65em;color:#15803d;margin-top:4px;text-align:center">路由表<br>10.244.1.0/24 → 10.20.50.72</div>
+        <div class="node-ip">eth0（10.20.50.73）</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;font-size:0.7em;color:#15803d">
+      <strong>BGP 优势：</strong> 数据包不需要封装/解封装，直接路由转发，延迟更低，吞吐量更高。节点间通过 BGP 协议互相交换路由信息。
+    </div>
+  </div>
+  <div class="explain">
+    <strong>Calico BGP 模式</strong>：每个节点运行 BIRD（BGP 守护进程），节点间互相通告各自的 PodCIDR 路由。数据包按照路由表直接转发，不需要 VXLAN 封装，性能比 Flannel 高 10-20%。A 环境使用 Calico v3.27.4。
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-gray" onclick="goStage(0)">↺ 重置</button>
+  <button class="btn btn-primary" id="btnPrev" onclick="prev()" disabled>← 上一步</button>
+  <button class="btn btn-primary" id="btnNext" onclick="next()">下一步 →</button>
+</div>
+
+<script>
+const stages = ['CNI概述', 'Pod网络创建', '同节点通信', 'Flannel跨节点', 'Calico BGP'];
+let cur = 0;
+document.getElementById('tabs').innerHTML = stages.map((s,i) =>
+  `<div class="tab ${i===0?'active':''}" onclick="goStage(${i})">${s}</div>`).join('');
+function goStage(n) {
+  cur = n;
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.getElementById('btnPrev').disabled = n===0;
+  document.getElementById('btnNext').disabled = n===stages.length-1;
+}
+function next() { if(cur<stages.length-1) goStage(cur+1); }
+function prev() { if(cur>0) goStage(cur-1); }
+</script>
+
+</body>
+</html>

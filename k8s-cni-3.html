@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes CNI 工作流程动态图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f7fa;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #333;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin: 8px 0 4px 0;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 8px;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: calc(100vw - 40px);
+            height: calc(100vh - 130px);
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 20px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        
+        /* 节点样式 */
+        .node {
+            position: absolute;
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            z-index: 10;
+            min-width: 120px;
+        }
+        
+        .node:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        
+        /* 节点类型颜色 */
+        .node-api { background: #e3f2fd; color: #1565c0; border: 2px solid #90caf9; }
+        .node-kubelet { background: #fff3e0; color: #e65100; border: 2px solid #ffcc80; }
+        .node-runtime { background: #f3e5f5; color: #6a1b9a; border: 2px solid #ce93d8; }
+        .node-cni { background: #e8f5e9; color: #2e7d32; border: 2px solid #a5d6a7; }
+        .node-ipam { background: #e0f7fa; color: #00838f; border: 2px solid #80deea; }
+        .node-net { background: #fce4ec; color: #c2185b; border: 2px solid #f48fb1; }
+        .node-etcd { background: #fff8e1; color: #f57f17; border: 2px solid #ffe082; }
+        
+        /* 节点位置 - 垂直居中分布 */
+        #n1 { left: 50%; top: 3%; transform: translateX(-50%); }
+        #n2 { left: 50%; top: 14%; transform: translateX(-50%); }
+        #n3 { left: 50%; top: 25%; transform: translateX(-50%); }
+        #n4 { left: 50%; top: 36%; transform: translateX(-50%); }
+        #n5 { left: 22%; top: 50%; transform: translateX(-50%); }
+        #n6 { left: 78%; top: 50%; transform: translateX(-50%); }
+        #n7 { left: 50%; top: 64%; transform: translateX(-50%); }
+        #n8 { left: 50%; top: 76%; transform: translateX(-50%); }
+        #n9 { left: 50%; top: 88%; transform: translateX(-50%); }
+        
+        /* 子节点 */
+        .sub-node {
+            position: absolute;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 10px;
+            background: #f8f9fa;
+            color: #555;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .sub-node.show { opacity: 1; }
+        
+        #s1 { left: 6%; top: 52%; }
+        #s2 { left: 6%; top: 57%; }
+        #s3 { left: 6%; top: 62%; }
+        #s4 { left: 82%; top: 52%; }
+        #s5 { left: 82%; top: 57%; }
+        #s6 { left: 82%; top: 62%; }
+        
+        /* 连接线 */
+        svg.connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        path.line {
+            fill: none;
+            stroke: #bdc3c7;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+        
+        path.line.active {
+            stroke: #3498db;
+            stroke-width: 3;
+            stroke-dasharray: none;
+            animation: dash 1s linear infinite;
+        }
+        
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+        
+        /* 流动粒子 */
+        .particle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #3498db;
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.6);
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .particle.active {
+            opacity: 1;
+        }
+        
+        /* 状态标签 */
+        .status-label {
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #ecf0f1;
+            color: #7f8c8d;
+            transition: all 0.3s;
+        }
+        
+        .status-label.running {
+            background: #d5f5e3;
+            color: #27ae60;
+        }
+        
+        .status-label.complete {
+            background: #d6eaf8;
+            color: #2980b9;
+        }
+        
+        /* 控制按钮 */
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 12px;
+            flex-shrink: 0;
+            margin-bottom: 10px;
+        }
+        
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: #ecf0f1;
+            color: #555;
+        }
+        
+        .btn-secondary:hover {
+            background: #d5dbdb;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .btn-active {
+            background: #27ae60 !important;
+            color: white !important;
+        }
+        
+        /* 步骤说明 - 固定在底部上方 */
+        .step-info {
+            position: absolute;
+            bottom: 55px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            font-size: 13px;
+            color: #555;
+            max-width: 600px;
+            text-align: center;
+            border: 1px solid #eee;
+            z-index: 30;
+        }
+        
+        /* 节点高亮 */
+        .node.highlight {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.4); }
+        }
+        
+        /* 图例 */
+        .legend {
+            position: absolute;
+            left: 15px;
+            top: 15px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            padding: 8px 12px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+            font-size: 10px;
+            z-index: 30;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 3px 0;
+            gap: 5px;
+        }
+        
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+        }
+        
+        /* 成功标记 */
+        .success-mark {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #27ae60;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            z-index: 25;
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s ease;
+        }
+        
+        .success-mark.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        /* 步骤进度指示器 */
+        .step-indicator {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 30;
+        }
+        
+        .step-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ddd;
+            transition: all 0.3s;
+        }
+        
+        .step-dot.active {
+            background: #3498db;
+            transform: scale(1.3);
+        }
+        
+        .step-dot.done {
+            background: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 Kubernetes CNI 网络插件工作流程动态图</h1>
+    <p class="subtitle">展示 Pod 创建时 CNI 插件配置网络接口的完整流程</p>
+    
+    <div class="container" id="container">
+        <div class="status-label" id="statusLabel">准备就绪</div>
+        
+        <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#90caf9"></div>API Server</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ffcc80"></div>Kubelet</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ce93d8"></div>容器运行时</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#a5d6a7"></div>CNI 插件</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#80deea"></div>IPAM</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f48fb1"></div>网络设备</div>
+        </div>
+        
+        <!-- SVG 连接线 -->
+        <svg class="connections" id="svgConnections">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#bdc3c7" />
+                </marker>
+                <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#3498db" />
+                </marker>
+            </defs>
+            <!-- 主流程线 -->
+            <path id="line1" class="line" d="M 50% 8% L 50% 13%" marker-end="url(#arrowhead)" />
+            <path id="line2" class="line" d="M 50% 19% L 50% 23%" marker-end="url(#arrowhead)" />
+            <path id="line3" class="line" d="M 50% 29% L 50% 33%" marker-end="url(#arrowhead)" />
+            <path id="line4" class="line" d="M 50% 40% L 27% 48%" marker-end="url(#arrowhead)" />
+            <path id="line5" class="line" d="M 50% 40% L 73% 48%" marker-end="url(#arrowhead)" />
+            <path id="line6" class="line" d="M 27% 55% L 50% 61%" marker-end="url(#arrowhead)" />
+            <path id="line7" class="line" d="M 73% 55% L 50% 61%" marker-end="url(#arrowhead)" />
+            <path id="line8" class="line" d="M 50% 70% L 50% 74%" marker-end="url(#arrowhead)" />
+            <path id="line9" class="line" d="M 50% 81% L 50% 85%" marker-end="url(#arrowhead)" />
+            
+            <!-- 子节点连接线 -->
+            <path id="sub1" class="line" d="M 22% 53% L 10% 53%" />
+            <path id="sub2" class="line" d="M 22% 53% L 10% 58%" />
+            <path id="sub3" class="line" d="M 22% 53% L 10% 63%" />
+            <path id="sub4" class="line" d="M 78% 53% L 90% 53%" />
+            <path id="sub5" class="line" d="M 78% 53% L 90% 58%" />
+            <path id="sub6" class="line" d="M 78% 53% L 90% 63%" />
+        </svg>
+        
+        <!-- 节点 -->
+        <div class="node node-api" id="n1">📋 API Server<br><small>Pod 创建/更新事件</small></div>
+        <div class="node node-kubelet" id="n2">🔧 Kubelet<br><small>接收调度结果，准备创建</small></div>
+        <div class="node node-runtime" id="n3">🐳 Container Runtime<br><small>创建 Pause 容器 (infra)</small></div>
+        <div class="node node-cni" id="n4">🔌 CNI 插件接口<br><small>调用 CNI ADD 命令</small></div>
+        <div class="node node-cni" id="n5">🛠️ CNI 插件执行<br><small>配置网络接口</small></div>
+        <div class="node node-ipam" id="n6">📍 IPAM 模块<br><small>分配/回收 IP 地址</small></div>
+        <div class="node node-net" id="n7">🖧 网络设备配置<br><small>veth / bridge / 路由</small></div>
+        <div class="node node-runtime" id="n8">🐳 Container Runtime<br><small>创建业务容器，共享 netns</small></div>
+        <div class="node node-api" id="n9">✅ Pod Status 更新<br><small>IP 写入 Pod Status</small></div>
+        
+        <!-- 子节点 -->
+        <div class="sub-node" id="s1">创建 veth pair</div>
+        <div class="sub-node" id="s2">连接 Linux Bridge</div>
+        <div class="sub-node" id="s3">配置 iptables/eBPF</div>
+        <div class="sub-node" id="s4">Host-Local IPAM</div>
+        <div class="sub-node" id="s5">Calico IPAM</div>
+        <div class="sub-node" id="s6">Cilium IPAM</div>
+        
+        <!-- 成功标记 -->
+        <div class="success-mark" id="mark1" style="left:52%;top:2%;">✓</div>
+        <div class="success-mark" id="mark2" style="left:52%;top:12%;">✓</div>
+        <div class="success-mark" id="mark3" style="left:52%;top:22%;">✓</div>
+        <div class="success-mark" id="mark4" style="left:52%;top:32%;">✓</div>
+        <div class="success-mark" id="mark5" style="left:28%;top:46%;">✓</div>
+        <div class="success-mark" id="mark6" style="left:74%;top:46%;">✓</div>
+        <div class="success-mark" id="mark7" style="left:52%;top:60%;">✓</div>
+        <div class="success-mark" id="mark8" style="left:52%;top:73%;">✓</div>
+        <div class="success-mark" id="mark9" style="left:52%;top:85%;">✓</div>
+        
+        <!-- 流动粒子 -->
+        <div class="particle" id="p1"></div>
+        <div class="particle" id="p2"></div>
+        <div class="particle" id="p3"></div>
+        <div class="particle" id="p4"></div>
+        <div class="particle" id="p5"></div>
+        <div class="particle" id="p6"></div>
+        <div class="particle" id="p7"></div>
+        <div class="particle" id="p8"></div>
+        <div class="particle" id="p9"></div>
+        
+        <div class="step-info" id="stepInfo">点击"开始演示"按钮查看 Kubernetes CNI 网络配置流程</div>
+        
+        <div class="step-indicator" id="stepIndicator">
+            <div class="step-dot" data-step="0"></div>
+            <div class="step-dot" data-step="1"></div>
+            <div class="step-dot" data-step="2"></div>
+            <div class="step-dot" data-step="3"></div>
+            <div class="step-dot" data-step="4"></div>
+            <div class="step-dot" data-step="5"></div>
+            <div class="step-dot" data-step="6"></div>
+            <div class="step-dot" data-step="7"></div>
+            <div class="step-dot" data-step="8"></div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn btn-primary" id="startBtn" onclick="startAnimation()">▶ 开始演示</button>
+        <button class="btn btn-secondary" id="prevBtn" onclick="prevStep()" disabled>◀ 上一步</button>
+        <button class="btn btn-secondary" id="nextBtn" onclick="nextStep()" disabled>下一步 ▶</button>
+        <button class="btn btn-secondary" id="resetBtn" onclick="resetAnimation()">↺ 重置</button>
+    </div>
+
+    <script>
+        const steps = [
+            {
+                id: 1,
+                line: 'line1',
+                from: 'n1',
+                to: 'n2',
+                particle: 'p1',
+                mark: 'mark1',
+                info: '步骤 1: API Server 将 Pod 绑定事件通知到目标节点的 Kubelet',
+                subNodes: []
+            },
+            {
+                id: 2,
+                line: 'line2',
+                from: 'n2',
+                to: 'n3',
+                particle: 'p2',
+                mark: 'mark2',
+                info: '步骤 2: Kubelet 调用 CRI (如 containerd) 创建 Pod 的 Pause (infra) 容器',
+                subNodes: []
+            },
+            {
+                id: 3,
+                line: 'line3',
+                from: 'n3',
+                to: 'n4',
+                particle: 'p3',
+                mark: 'mark3',
+                info: '步骤 3: 容器运行时创建好 netns 后，Kubelet 调用 CNI 接口执行 ADD 操作',
+                subNodes: []
+            },
+            {
+                id: 4,
+                line: 'line4',
+                from: 'n4',
+                to: 'n5',
+                particle: 'p4',
+                mark: 'mark4',
+                info: '步骤 4: CNI 插件读取 /etc/cni/net.d/ 配置，开始配置网络接口',
+                subNodes: ['s1', 's2', 's3']
+            },
+            {
+                id: 5,
+                line: 'line5',
+                from: 'n4',
+                to: 'n6',
+                particle: 'p5',
+                mark: 'mark5',
+                info: '步骤 5: 调用 IPAM 模块为 Pod 分配 IP 地址（Host-Local / Calico / Cilium）',
+                subNodes: ['s4', 's5', 's6']
+            },
+            {
+                id: 6,
+                line: 'line6',
+                from: 'n5',
+                to: 'n7',
+                particle: 'p6',
+                mark: 'mark6',
+                info: '步骤 6: CNI 插件完成网络设备配置：veth pair、bridge、路由表、iptables/eBPF',
+                subNodes: []
+            },
+            {
+                id: 7,
+                line: 'line7',
+                from: 'n6',
+                to: 'n7',
+                particle: 'p7',
+                mark: 'mark7',
+                info: '步骤 7: IP 地址绑定到容器网卡，网络命名空间配置完成',
+                subNodes: []
+            },
+            {
+                id: 8,
+                line: 'line8',
+                from: 'n7',
+                to: 'n8',
+                particle: 'p8',
+                mark: 'mark8',
+                info: '步骤 8: CNI 返回结果后，容器运行时创建业务容器，共享已配置好的 netns',
+                subNodes: []
+            },
+            {
+                id: 9,
+                line: 'line9',
+                from: 'n8',
+                to: 'n9',
+                particle: 'p9',
+                mark: 'mark9',
+                info: '步骤 9: Kubelet 将分配的 Pod IP 上报给 API Server，Pod 进入 Running 状态',
+                subNodes: []
+            }
+        ];
+        
+        let currentStep = -1;
+        let isRunning = false;
+        let autoPlayInterval = null;
+        
+        function getElementCenter(id) {
+            const el = document.getElementById(id);
+            const rect = el.getBoundingClientRect();
+            const container = document.getElementById('container').getBoundingClientRect();
+            return {
+                x: rect.left - container.left + rect.width / 2,
+                y: rect.top - container.top + rect.height / 2
+            };
+        }
+        
+        function animateParticle(particleId, fromId, toId, duration) {
+            const particle = document.getElementById(particleId);
+            const from = getElementCenter(fromId);
+            const to = getElementCenter(toId);
+            
+            particle.style.left = (from.x - 6) + 'px';
+            particle.style.top = (from.y - 6) + 'px';
+            particle.classList.add('active');
+            
+            const startTime = performance.now();
+            
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                const currentX = from.x + (to.x - from.x) * easeProgress;
+                const currentY = from.y + (to.y - from.y) * easeProgress;
+                
+                particle.style.left = (currentX - 6) + 'px';
+                particle.style.top = (currentY - 6) + 'px';
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    particle.classList.remove('active');
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        function highlightNode(nodeId) {
+            const node = document.getElementById(nodeId);
+            node.classList.add('highlight');
+            setTimeout(() => node.classList.remove('highlight'), 2000);
+        }
+        
+        function activateLine(lineId) {
+            const line = document.getElementById(lineId);
+            line.classList.add('active');
+            line.setAttribute('marker-end', 'url(#arrowhead-active)');
+        }
+        
+        function deactivateLine(lineId) {
+            const line = document.getElementById(lineId);
+            line.classList.remove('active');
+            line.setAttribute('marker-end', 'url(#arrowhead)');
+        }
+        
+        function showSubNodes(nodeIds) {
+            nodeIds.forEach(id => {
+                document.getElementById(id).classList.add('show');
+            });
+        }
+        
+        function hideSubNodes() {
+            document.querySelectorAll('.sub-node').forEach(el => el.classList.remove('show'));
+        }
+        
+        function updateStepIndicator() {
+            document.querySelectorAll('.step-dot').forEach((dot, idx) => {
+                dot.classList.remove('active', 'done');
+                if (idx < currentStep) {
+                    dot.classList.add('done');
+                } else if (idx === currentStep) {
+                    dot.classList.add('active');
+                }
+            });
+        }
+        
+        function updateButtons() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const startBtn = document.getElementById('startBtn');
+            
+            prevBtn.disabled = currentStep <= 0;
+            nextBtn.disabled = currentStep >= steps.length - 1;
+            
+            if (currentStep >= steps.length - 1) {
+                startBtn.textContent = '▶ 再次演示';
+            } else if (isRunning) {
+                startBtn.textContent = '⏸ 暂停';
+            } else {
+                startBtn.textContent = '▶ 自动播放';
+            }
+        }
+        
+        async function playStep(stepIndex) {
+            if (stepIndex < 0 || stepIndex >= steps.length) return;
+            
+            currentStep = stepIndex;
+            const step = steps[stepIndex];
+            
+            document.getElementById('stepInfo').textContent = step.info;
+            highlightNode(step.from);
+            activateLine(step.line);
+            
+            if (step.subNodes.length > 0) {
+                showSubNodes(step.subNodes);
+            }
+            
+            animateParticle(step.particle, step.from, step.to, 2000);
+            await new Promise(r => setTimeout(r, 2000));
+            
+            document.getElementById(step.mark).classList.add('show');
+            highlightNode(step.to);
+            
+            updateStepIndicator();
+            updateButtons();
+        }
+        
+        async function startAnimation() {
+            if (isRunning) {
+                // 暂停
+                isRunning = false;
+                if (autoPlayInterval) {
+                    clearInterval(autoPlayInterval);
+                    autoPlayInterval = null;
+                }
+                updateButtons();
+                return;
+            }
+            
+            // 如果已完成，重置后播放
+            if (currentStep >= steps.length - 1) {
+                resetAnimation();
+                await new Promise(r => setTimeout(r, 300));
+            }
+            
+            isRunning = true;
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = '网络配置中...';
+            statusLabel.className = 'status-label running';
+            updateButtons();
+            
+            // 从当前步骤开始自动播放
+            for (let i = currentStep + 1; i < steps.length; i++) {
+                if (!isRunning) break;
+                await playStep(i);
+                if (!isRunning) break;
+                await new Promise(r => setTimeout(r, 800)); // 步骤间隔
+            }
+            
+            if (isRunning) {
+                statusLabel.textContent = '网络配置完成 ✓';
+                statusLabel.className = 'status-label complete';
+                document.getElementById('stepInfo').textContent = '🎉 CNI 网络配置流程全部完成！Pod 已获得 IP 并接入集群网络。';
+                isRunning = false;
+            }
+            
+            updateButtons();
+        }
+        
+        async function nextStep() {
+            if (isRunning) return;
+            if (currentStep >= steps.length - 1) return;
+            
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = '网络配置中...';
+            statusLabel.className = 'status-label running';
+            
+            await playStep(currentStep + 1);
+            
+            if (currentStep >= steps.length - 1) {
+                statusLabel.textContent = '网络配置完成 ✓';
+                statusLabel.className = 'status-label complete';
+                document.getElementById('stepInfo').textContent = '🎉 CNI 网络配置流程全部完成！Pod 已获得 IP 并接入集群网络。';
+            }
+        }
+        
+        async function prevStep() {
+            if (isRunning) return;
+            if (currentStep <= 0) return;
+            
+            // 回退一步：重置到上一步的状态
+            resetToStep(currentStep - 1);
+        }
+        
+        function resetToStep(targetStep) {
+            // 清除所有状态
+            document.querySelectorAll('.line').forEach(line => {
+                line.classList.remove('active');
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+            });
+            
+            document.querySelectorAll('.success-mark').forEach(mark => {
+                mark.classList.remove('show');
+            });
+            
+            document.querySelectorAll('.particle').forEach(p => {
+                p.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.node').forEach(node => {
+                node.classList.remove('highlight');
+            });
+            
+            hideSubNodes();
+            
+            // 恢复到目标步骤
+            currentStep = targetStep;
+            
+            for (let i = 0; i <= targetStep; i++) {
+                const step = steps[i];
+                activateLine(step.line);
+                document.getElementById(step.mark).classList.add('show');
+                if (step.subNodes.length > 0) {
+                    showSubNodes(step.subNodes);
+                }
+            }
+            
+            if (targetStep >= 0) {
+                document.getElementById('stepInfo').textContent = steps[targetStep].info;
+            } else {
+                document.getElementById('stepInfo').textContent = '点击"开始演示"按钮查看 Kubernetes CNI 网络配置流程';
+            }
+            
+            const statusLabel = document.getElementById('statusLabel');
+            if (targetStep >= steps.length - 1) {
+                statusLabel.textContent = '网络配置完成 ✓';
+                statusLabel.className = 'status-label complete';
+            } else {
+                statusLabel.textContent = '网络配置中...';
+                statusLabel.className = 'status-label running';
+            }
+            
+            updateStepIndicator();
+            updateButtons();
+        }
+        
+        function resetAnimation() {
+            if (isRunning) {
+                isRunning = false;
+                if (autoPlayInterval) {
+                    clearInterval(autoPlayInterval);
+                    autoPlayInterval = null;
+                }
+            }
+            
+            currentStep = -1;
+            
+            document.querySelectorAll('.line').forEach(line => {
+                line.classList.remove('active');
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+            });
+            
+            document.querySelectorAll('.success-mark').forEach(mark => {
+                mark.classList.remove('show');
+            });
+            
+            document.querySelectorAll('.particle').forEach(p => {
+                p.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.node').forEach(node => {
+                node.classList.remove('highlight');
+            });
+            
+            hideSubNodes();
+            
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = '准备就绪';
+            statusLabel.className = 'status-label';
+            
+            document.getElementById('stepInfo').textContent = '点击"开始演示"按钮查看 Kubernetes CNI 网络配置流程';
+            
+            updateStepIndicator();
+            updateButtons();
+            
+            const startBtn = document.getElementById('startBtn');
+            startBtn.textContent = '▶ 开始演示';
+        }
+        
+        // 初始化
+        updateStepIndicator();
+        updateButtons();
+    </script>
+</body>
+</html>
+
