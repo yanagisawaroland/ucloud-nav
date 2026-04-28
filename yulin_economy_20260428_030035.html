@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>榆林市经济结构与发展现状 · 逻辑关系流程图</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+    background:#f5f3ee;
+    min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;
+    padding:24px 16px 48px;
+    color:#2c2c28;
+  }
+  h1{font-size:22px;font-weight:600;margin-bottom:8px;text-align:center;letter-spacing:.5px}
+  .subtitle{font-size:13px;color:#888;margin-bottom:18px;text-align:center}
+  .controls{
+    display:flex;gap:10px;flex-wrap:wrap;justify-content:center;
+    margin-bottom:22px;
+  }
+  .btn{
+    padding:7px 18px;border:none;border-radius:6px;cursor:pointer;
+    font-size:13px;font-weight:500;transition:all .2s;letter-spacing:.3px;
+  }
+  .btn-primary{background:#e8a020;color:#fff}
+  .btn-primary:hover{background:#c8880a}
+  .btn-secondary{background:#fff;color:#555;border:1px solid #ddd}
+  .btn-secondary:hover{background:#f0ede5;border-color:#bbb}
+  .btn-reset{background:#f0ede5;color:#666;border:1px solid #ddd}
+  .btn-reset:hover{background:#e0ddd5}
+  .speed-label{font-size:12px;color:#888;align-self:center}
+  .canvas-wrap{
+    background:#fff;border-radius:14px;
+    box-shadow:0 2px 16px rgba(0,0,0,.08);
+    padding:28px 20px 20px;
+    width:100%;max-width:780px;
+    overflow-x:auto;
+  }
+  svg{display:block;margin:0 auto}
+
+  /* ── node styles ── */
+  .node-amber{fill:#fff8eb;stroke:#d4900a;stroke-width:1.2}
+  .node-coral {fill:#fff1ec;stroke:#c5512a;stroke-width:1.2}
+  .node-blue  {fill:#eaf3fb;stroke:#2272b8;stroke-width:1.2}
+  .node-teal  {fill:#e6f4ee;stroke:#0f8050;stroke-width:1.2}
+  .node-red   {fill:#fdecec;stroke:#b03030;stroke-width:1.2}
+  .node-purple{fill:#f2eefe;stroke:#6040c0;stroke-width:1.2}
+  .node-gray  {fill:#f5f4f0;stroke:#888;stroke-width:1.2}
+  .node-green {fill:#edf7e2;stroke:#3a7010;stroke-width:1.2}
+
+  .label-title{font-size:14px;font-weight:600;fill:#1a1a18}
+  .label-sub  {font-size:11.5px;font-weight:400;fill:#555}
+
+  .arr-line{stroke:#aaa;stroke-width:1.2;fill:none}
+  .fb-line {stroke:#c8c0a8;stroke-width:.8;fill:none;stroke-dasharray:4 3}
+  .fb-text {font-size:11px;fill:#aaa}
+
+  /* ── animation states ── */
+  .node-group{opacity:0;transform:translateY(12px);transition:opacity .5s ease,transform .5s ease}
+  .node-group.visible{opacity:1;transform:translateY(0)}
+  .conn-group{opacity:0;transition:opacity .4s ease}
+  .conn-group.visible{opacity:1}
+
+  .step-indicator{
+    display:flex;gap:6px;justify-content:center;margin-top:16px;flex-wrap:wrap
+  }
+  .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:#ddd;transition:background .3s;cursor:pointer;
+  }
+  .dot.active{background:#e8a020}
+
+  .info-bar{
+    margin-top:14px;font-size:12.5px;color:#888;text-align:center;
+    min-height:20px;transition:color .3s;
+  }
+</style>
+</head>
+<body>
+
+<h1>榆林市经济结构与发展现状</h1>
+<p class="subtitle">逻辑关系 · 流程动态图 / Yulin City Economic Structure Flow</p>
+
+<div class="controls">
+  <button class="btn btn-primary" id="btn-play" onclick="togglePlay()">▶ 播放动画</button>
+  <button class="btn btn-secondary" onclick="stepForward()">→ 下一步</button>
+  <button class="btn btn-secondary" onclick="stepBack()">← 上一步</button>
+  <button class="btn btn-reset" onclick="resetAnim()">↺ 重置</button>
+  <span class="speed-label">速度</span>
+  <button class="btn btn-secondary" onclick="setSpeed(1200)">慢</button>
+  <button class="btn btn-secondary" onclick="setSpeed(700)">中</button>
+  <button class="btn btn-secondary" onclick="setSpeed(350)">快</button>
+</div>
+
+<div class="canvas-wrap">
+<svg width="740" viewBox="0 0 740 860" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#aaa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arr-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#c8880a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arr-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#0f8050" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arr-fb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#c8c0a8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- ══ Step 0: 资源禀赋 ══ -->
+<g class="node-group" id="s0">
+  <rect class="node-amber" x="255" y="38" width="230" height="56" rx="10"/>
+  <text class="label-title" x="370" y="61" text-anchor="middle" dominant-baseline="central">🏔 资源禀赋</text>
+  <text class="label-sub"   x="370" y="82" text-anchor="middle" dominant-baseline="central">煤炭 · 天然气 · 石油 · 岩盐</text>
+</g>
+
+<!-- conn 0→1 -->
+<g class="conn-group" id="c01">
+  <line class="arr-line" x1="370" y1="94" x2="370" y2="124" marker-end="url(#arr-amber)" stroke="#c8880a"/>
+</g>
+
+<!-- ══ Step 1: 能源化工主导 ══ -->
+<g class="node-group" id="s1">
+  <rect class="node-coral" x="180" y="124" width="380" height="56" rx="10"/>
+  <text class="label-title" x="370" y="147" text-anchor="middle" dominant-baseline="central">⚡ 能源化工主导产业</text>
+  <text class="label-sub"   x="370" y="167" text-anchor="middle" dominant-baseline="central">煤化工 · 油气开采 · 电力输出 · 兰炭</text>
+</g>
+
+<!-- conn 1→2 (three arrows) -->
+<g class="conn-group" id="c12">
+  <line class="arr-line" x1="280" y1="180" x2="130" y2="216" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="370" y1="180" x2="370" y2="216" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="460" y1="180" x2="610" y2="216" marker-end="url(#arr)"/>
+</g>
+
+<!-- ══ Step 2: 三大支柱 ══ -->
+<g class="node-group" id="s2">
+  <rect class="node-blue" x="40"  y="216" width="176" height="56" rx="10"/>
+  <text class="label-title" x="128" y="237" text-anchor="middle" dominant-baseline="central">🪨 煤炭开采</text>
+  <text class="label-sub"   x="128" y="257" text-anchor="middle" dominant-baseline="central">产能全国前列</text>
+
+  <rect class="node-blue" x="282" y="216" width="176" height="56" rx="10"/>
+  <text class="label-title" x="370" y="237" text-anchor="middle" dominant-baseline="central">🔬 天然气化工</text>
+  <text class="label-sub"   x="370" y="257" text-anchor="middle" dominant-baseline="central">煤制油 · 兰炭 · 化肥</text>
+
+  <rect class="node-blue" x="524" y="216" width="176" height="56" rx="10"/>
+  <text class="label-title" x="612" y="237" text-anchor="middle" dominant-baseline="central">🔌 电力外送</text>
+  <text class="label-sub"   x="612" y="257" text-anchor="middle" dominant-baseline="central">特高压 · 新能源基地</text>
+</g>
+
+<!-- conn 2→3 -->
+<g class="conn-group" id="c23">
+  <line class="arr-line" x1="128" y1="272" x2="250" y2="308" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="370" y1="272" x2="370" y2="308" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="612" y1="272" x2="490" y2="308" marker-end="url(#arr)"/>
+</g>
+
+<!-- ══ Step 3: GDP总量 ══ -->
+<g class="node-group" id="s3">
+  <rect class="node-teal" x="180" y="308" width="380" height="56" rx="10"/>
+  <text class="label-title" x="370" y="329" text-anchor="middle" dominant-baseline="central">📊 GDP总量（陕西第二）</text>
+  <text class="label-sub"   x="370" y="349" text-anchor="middle" dominant-baseline="central">约6700亿元 · 工业占比超70%</text>
+</g>
+
+<!-- conn 3→4 -->
+<g class="conn-group" id="c34">
+  <line class="arr-line" x1="300" y1="364" x2="212" y2="398" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="440" y1="364" x2="528" y2="398" marker-end="url(#arr)"/>
+</g>
+
+<!-- ══ Step 4: 挑战 + 机遇 ══ -->
+<g class="node-group" id="s4">
+  <rect class="node-red" x="40" y="398" width="310" height="56" rx="10"/>
+  <text class="label-title" x="195" y="419" text-anchor="middle" dominant-baseline="central">⚠️ 结构性挑战</text>
+  <text class="label-sub"   x="195" y="439" text-anchor="middle" dominant-baseline="central">产业单一 · 资源依赖 · 环境压力</text>
+
+  <rect class="node-purple" x="390" y="398" width="310" height="56" rx="10"/>
+  <text class="label-title" x="545" y="419" text-anchor="middle" dominant-baseline="central">🌱 转型机遇</text>
+  <text class="label-sub"   x="545" y="439" text-anchor="middle" dominant-baseline="central">新能源 · 数字经济 · 现代农业</text>
+</g>
+
+<!-- conn 4→5 -->
+<g class="conn-group" id="c45">
+  <line class="arr-line" x1="195" y1="454" x2="195" y2="488" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="545" y1="454" x2="545" y2="488" marker-end="url(#arr)"/>
+</g>
+
+<!-- ══ Step 5: 政策应对 + 产业培育 ══ -->
+<g class="node-group" id="s5">
+  <rect class="node-gray" x="40" y="488" width="310" height="56" rx="10"/>
+  <text class="label-title" x="195" y="509" text-anchor="middle" dominant-baseline="central">🏛 政策应对</text>
+  <text class="label-sub"   x="195" y="529" text-anchor="middle" dominant-baseline="central">生态补偿 · 碳中和路径</text>
+
+  <rect class="node-green" x="390" y="488" width="310" height="56" rx="10"/>
+  <text class="label-title" x="545" y="509" text-anchor="middle" dominant-baseline="central">🏗 产业培育</text>
+  <text class="label-sub"   x="545" y="529" text-anchor="middle" dominant-baseline="central">光伏 · 储能 · 算力 · 文旅</text>
+</g>
+
+<!-- conn 5→6 -->
+<g class="conn-group" id="c56">
+  <line class="arr-line" x1="195" y1="544" x2="284" y2="578" marker-end="url(#arr)"/>
+  <line class="arr-line" x1="545" y1="544" x2="456" y2="578" marker-end="url(#arr)"/>
+</g>
+
+<!-- ══ Step 6: 区域协调 ══ -->
+<g class="node-group" id="s6">
+  <rect class="node-teal" x="180" y="578" width="380" height="56" rx="10"/>
+  <text class="label-title" x="370" y="599" text-anchor="middle" dominant-baseline="central">🗺 区域协调发展格局</text>
+  <text class="label-sub"   x="370" y="619" text-anchor="middle" dominant-baseline="central">榆阳 · 神木 · 府谷 · 靖边协同联动</text>
+</g>
+
+<!-- conn 6→7 -->
+<g class="conn-group" id="c67">
+  <line class="arr-line" x1="370" y1="634" x2="370" y2="668" marker-end="url(#arr-teal)" stroke="#0f8050"/>
+</g>
+
+<!-- ══ Step 7: 发展目标 ══ -->
+<g class="node-group" id="s7">
+  <rect class="node-amber" x="180" y="668" width="380" height="56" rx="10"/>
+  <text class="label-title" x="370" y="689" text-anchor="middle" dominant-baseline="central">🎯 发展目标</text>
+  <text class="label-sub"   x="370" y="709" text-anchor="middle" dominant-baseline="central">能源强市 → 绿色转型 → 高质量发展</text>
+</g>
+
+<!-- ══ Step 8: 反馈循环 ══ -->
+<g class="node-group" id="s8">
+  <path class="fb-line" d="M180 696 L50 696 L50 66 L255 66" marker-end="url(#arr-fb)"/>
+  <text class="fb-text" x="44" y="400" text-anchor="middle" transform="rotate(-90,44,400)">政策反馈循环</text>
+  <text class="fb-text" x="150" y="742" text-anchor="middle">↑ 政策驱动资源优化配置，形成可持续闭环</text>
+</g>
+
+</svg>
+</div>
+
+<div class="step-indicator" id="dots"></div>
+<div class="info-bar" id="info-bar">点击「播放动画」查看完整流程，或使用「下一步」逐帧浏览</div>
+
+<script>
+const STEPS = [
+  {id:'s0', conn:null,  info:'【资源禀赋】榆林坐拥"中国能源腹地"：已探明煤炭储量1500亿吨、天然气储量约5万亿立方米'},
+  {id:'s1', conn:'c01', info:'【能源化工】依托资源优势，形成以煤化工、油气开采、兰炭为核心的主导产业链'},
+  {id:'s2', conn:'c12', info:'【三大支柱】煤炭开采量连续多年位居全国前三，天然气外输量约占全国1/5，新能源装机高速增长'},
+  {id:'s3', conn:'c23', info:'【GDP总量】2023年GDP约6700亿元，居陕西第二，工业增加值占比超70%'},
+  {id:'s4', conn:'c34', info:'【挑战与机遇】资源型城市面临"荷兰病"风险，同时新能源、数字经济带来历史性转型窗口'},
+  {id:'s5', conn:'c45', info:'【政策与产业】政府推动碳中和路径规划，光伏、储能、算力中心、文旅等新兴产业加速落地'},
+  {id:'s6', conn:'c56', info:'【区域协调】榆阳、神木、府谷、靖边等县市差异化定位，形成协同发展格局'},
+  {id:'s7', conn:'c67', info:'【发展目标】"十四五"目标：能源强市→低碳转型→高质量全面发展'},
+  {id:'s8', conn:null,  info:'【闭环反馈】发展目标倒逼资源配置优化，政策引导与市场机制形成正向循环'}
+];
+
+let current = -1;
+let playing = false;
+let timer = null;
+let speed = 800;
+
+const dotsEl = document.getElementById('dots');
+const infoEl = document.getElementById('info-bar');
+const btnPlay = document.getElementById('btn-play');
+
+// build dots
+STEPS.forEach((_,i)=>{
+  const d = document.createElement('div');
+  d.className='dot';
+  d.title=`步骤 ${i+1}`;
+  d.onclick=()=>goTo(i);
+  dotsEl.appendChild(d);
+});
+
+function updateDots(){
+  dotsEl.querySelectorAll('.dot').forEach((d,i)=>{
+    d.classList.toggle('active', i===current);
+  });
+}
+
+function showStep(idx){
+  if(idx<0||idx>=STEPS.length) return;
+  const s=STEPS[idx];
+  // show node
+  document.getElementById(s.id).classList.add('visible');
+  // show connector if exists
+  if(s.conn) document.getElementById(s.conn).classList.add('visible');
+  infoEl.textContent=s.info;
+  current=idx;
+  updateDots();
+}
+
+function goTo(idx){
+  if(idx<=current) return;
+  for(let i=current+1;i<=idx;i++) showStep(i);
+}
+
+function stepForward(){
+  stopPlay();
+  if(current<STEPS.length-1) showStep(current+1);
+}
+
+function stepBack(){
+  stopPlay();
+  if(current<=0){resetAnim();return;}
+  // reset all and replay up to current-1
+  resetAnim(true);
+  const target=current-1;
+  for(let i=0;i<=target;i++) showStep(i);
+}
+
+function resetAnim(silent){
+  stopPlay();
+  document.querySelectorAll('.node-group,.conn-group').forEach(el=>el.classList.remove('visible'));
+  current=-1;
+  updateDots();
+  if(!silent) infoEl.textContent='点击「播放动画」查看完整流程，或使用「下一步」逐帧浏览';
+}
+
+function togglePlay(){
+  if(playing){stopPlay();}
+  else{startPlay();}
+}
+
+function startPlay(){
+  playing=true;
+  btnPlay.textContent='⏸ 暂停';
+  function next(){
+    if(current>=STEPS.length-1){stopPlay();return;}
+    showStep(current+1);
+    timer=setTimeout(next,speed);
+  }
+  timer=setTimeout(next, current===-1?200:speed);
+}
+
+function stopPlay(){
+  playing=false;
+  clearTimeout(timer);
+  btnPlay.textContent='▶ 播放动画';
+}
+
+function setSpeed(ms){speed=ms;}
+</script>
+</body>
+</html>

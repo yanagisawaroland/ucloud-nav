@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>K8s 资源限制 · Request/Limit · QoS · OOM Kill</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  background:#f1f5fb;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  padding:22px 10px 64px;
+}
+h1{font-size:20px;font-weight:700;color:#16223a;margin-bottom:4px;text-align:center;letter-spacing:.5px}
+.sub{font-size:12px;color:#8090a8;margin-bottom:14px;text-align:center;line-height:1.7}
+
+/* controls */
+.ctrl{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:14px;align-items:center}
+.btn{padding:6px 15px;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;transition:all .16s}
+.bp{background:#2952c8;color:#fff}.bp:hover{background:#1c3c9a}
+.bs{background:#fff;color:#36465a;border:1.2px solid #c4d0e4}.bs:hover{background:#e4eef8;border-color:#2952c8}
+.br{background:#e6ebf4;color:#56687a;border:1.2px solid #c4d0e4}.br:hover{background:#d4dcea}
+.slbl{font-size:11.5px;color:#8090a8}
+.tabs{display:flex;gap:5px}
+.tab{padding:5px 11px;border-radius:6px;border:1.2px solid #c4d0e4;background:#fff;
+     font-size:11.5px;cursor:pointer;color:#36465a;transition:all .14s}
+.tab.on{background:#2952c8;color:#fff;border-color:#2952c8}
+
+/* legend */
+.lgd{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;font-size:11.5px;color:#56687a}
+.li{display:flex;align-items:center;gap:4px}
+.lb{width:13px;height:13px;border-radius:3px;flex-shrink:0}
+
+/* canvas */
+.wrap{background:#fff;border-radius:16px;box-shadow:0 3px 22px rgba(0,0,0,.09);
+  padding:20px 12px 18px;width:100%;max-width:1020px;overflow-x:auto}
+
+/* anim */
+.ng{opacity:0;transition:opacity .44s,transform .44s;transform:translateY(8px)}
+.ng.v{opacity:1;transform:translateY(0)}
+.cg{opacity:0;transition:opacity .32s}.cg.v{opacity:1}
+
+/* dots */
+.dots{display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;background:#d8e2f0;cursor:pointer;transition:background .22s}
+.dot.on{background:#2952c8}
+
+/* info */
+.info{margin-top:11px;font-size:12.5px;color:#48586e;text-align:center;
+  min-height:40px;line-height:1.78;max-width:980px;padding:0 8px}
+
+/* memory bar */
+@keyframes barGrow{from{width:0}to{width:var(--bw)}}
+.banim{animation:barGrow .7s ease forwards}
+
+/* oom shake */
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}
+  40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+.shake{animation:shake .5s ease}
+
+@keyframes fdash{to{stroke-dashoffset:-16}}
+.fdash{stroke-dasharray:5 4;animation:fdash 1s linear infinite}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.blink{animation:blink .9s ease-in-out infinite}
+</style>
+</head>
+<body>
+
+<h1>K8s 资源限制 · Request / Limit · QoS · OOM Kill 流程</h1>
+<p class="sub">
+  resources.requests → 调度保障 &nbsp;|&nbsp; resources.limits → 运行上限 &nbsp;|&nbsp;
+  QoS 分级 → Guaranteed / Burstable / BestEffort &nbsp;|&nbsp; 内存超限 → OOM Kill
+</p>
+
+<div class="ctrl">
+  <button class="btn bp" id="btnPlay" onclick="togglePlay()">▶ 播放</button>
+  <button class="btn bs" onclick="stepFwd()">→ 下一步</button>
+  <button class="btn bs" onclick="stepBk()">← 上一步</button>
+  <button class="btn br" onclick="doReset()">↺ 重置</button>
+  <span class="slbl">速度</span>
+  <button class="btn bs" onclick="spd=1500">慢</button>
+  <button class="btn bs" onclick="spd=880">中</button>
+  <button class="btn bs" onclick="spd=380">快</button>
+  <div class="tabs">
+    <span class="slbl">QoS 场景&nbsp;</span>
+    <button class="tab on" id="t0" onclick="setScene(0)">Guaranteed</button>
+    <button class="tab"    id="t1" onclick="setScene(1)">Burstable</button>
+    <button class="tab"    id="t2" onclick="setScene(2)">BestEffort</button>
+    <button class="tab"    id="t3" onclick="setScene(3)">OOM Kill</button>
+  </div>
+</div>
+
+<div class="lgd">
+  <div class="li"><div class="lb" style="background:#dbeafe;border:1.2px solid #3b82f6"></div>请求/调度</div>
+  <div class="li"><div class="lb" style="background:#fef3c7;border:1.2px solid #d97706"></div>Limit 上限</div>
+  <div class="li"><div class="lb" style="background:#dcfce7;border:1.2px solid #16a34a"></div>Guaranteed</div>
+  <div class="li"><div class="lb" style="background:#ede9fe;border:1.2px solid #7c3aed"></div>Burstable</div>
+  <div class="li"><div class="lb" style="background:#f1f5f9;border:1.2px solid #64748b"></div>BestEffort</div>
+  <div class="li"><div class="lb" style="background:#fee2e2;border:1.2px solid #dc2626"></div>OOM Kill</div>
+</div>
+
+<div class="wrap">
+<svg id="mainsvg" width="100%" viewBox="0 0 1000 900" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ma"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#8090a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mb"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2952c8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mg"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#16a34a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mr"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#dc2626" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mo"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#d97706" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mv"  viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#7c3aed" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+</defs>
+
+<!-- ══════════════════════════════════════════
+     S0  Pod YAML 定义
+══════════════════════════════════════════════ -->
+<g class="ng" id="s0">
+  <rect x="300" y="12" width="400" height="82" rx="10" fill="#f0f4ff" stroke="#2952c8" stroke-width="1.3"/>
+  <text x="500" y="32" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#18286a">📄 Pod YAML · resources 字段</text>
+  <text x="500" y="52" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2a3a7a" font-family="monospace">resources:</text>
+  <text x="500" y="67" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2a3a7a" font-family="monospace">  requests: {cpu: "250m", memory: "256Mi"}</text>
+  <text x="500" y="82" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2a3a7a" font-family="monospace">  limits:   {cpu: "500m", memory: "512Mi"}</text>
+  <text id="s0-extra" x="500" y="86" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#2952c8">—</text>
+</g>
+
+<!-- c0→1 -->
+<g class="cg" id="c01">
+  <line x1="400" y1="94" x2="260" y2="132" stroke="#2952c8" stroke-width="1.3" marker-end="url(#mb)"/>
+  <line x1="500" y1="94" x2="500" y2="132" stroke="#2952c8" stroke-width="1.3" marker-end="url(#mb)"/>
+  <line x1="600" y1="94" x2="740" y2="132" stroke="#2952c8" stroke-width="1.3" marker-end="url(#mb)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S1  三列：Request / Limit / QoS判定
+══════════════════════════════════════════════ -->
+<g class="ng" id="s1">
+  <!-- Request -->
+  <rect x="60"  y="132" width="280" height="74" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.3"/>
+  <text x="200" y="151" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#1e3a8a">📌 requests（请求量）</text>
+  <text x="200" y="170" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#1d4ed8">调度器保障节点有足够空闲资源</text>
+  <text x="200" y="187" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">Pod 启动最低保障 · 影响 QoS 分级</text>
+  <text id="s1-req" x="200" y="200" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#3b82f6" font-weight="600">—</text>
+  <!-- Limit -->
+  <rect x="360"  y="132" width="280" height="74" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.3"/>
+  <text x="500" y="151" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#78350f">🔒 limits（上限）</text>
+  <text x="500" y="170" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">CPU 超限 → throttle 限速</text>
+  <text x="500" y="187" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">内存超限 → OOM Kill（不可压缩）</text>
+  <text id="s1-lim" x="500" y="200" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#d97706" font-weight="600">—</text>
+  <!-- QoS 判定入口 -->
+  <rect x="660" y="132" width="280" height="74" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="800" y="151" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#14532d">⚖️ QoS 分级判定</text>
+  <text x="800" y="170" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">req==lim → Guaranteed</text>
+  <text x="800" y="187" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">req&lt;lim or 部分设置 → Burstable</text>
+  <text x="800" y="200" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#15803d">无任何设置 → BestEffort</text>
+</g>
+
+<!-- c1→2 -->
+<g class="cg" id="c12">
+  <line x1="200" y1="206" x2="200" y2="244" stroke="#3b82f6" stroke-width="1.2" marker-end="url(#mb)"/>
+  <line x1="500" y1="206" x2="500" y2="244" stroke="#d97706" stroke-width="1.2" marker-end="url(#mo)"/>
+  <line x1="800" y1="206" x2="800" y2="244" stroke="#16a34a" stroke-width="1.2" marker-end="url(#mg)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S2  调度器行为 / CPU Throttle / QoS三类
+══════════════════════════════════════════════ -->
+<g class="ng" id="s2">
+  <!-- 调度器 -->
+  <rect x="60" y="244" width="280" height="68" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="200" y="263" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#1e3a8a">🗓 kube-scheduler 调度</text>
+  <text x="200" y="281" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">Node.Allocatable ≥ Pod.requests</text>
+  <text x="200" y="298" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">才允许调度到该节点</text>
+  <text id="s2-sched" x="200" y="307" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#3b82f6" font-weight="600">—</text>
+  <!-- CPU Throttle -->
+  <rect x="360" y="244" width="280" height="68" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="500" y="263" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#7c2d12">⏱ CPU Throttle</text>
+  <text x="500" y="281" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#9a3412">cgroups cpu.cfs_quota_us 限速</text>
+  <text x="500" y="298" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#9a3412">超出 limit → 暂停到下个周期</text>
+  <text id="s2-cpu" x="500" y="307" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#ea580c" font-weight="600">—</text>
+  <!-- QoS 三类 -->
+  <rect x="660" y="244" width="280" height="68" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+  <text x="800" y="263" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#1e293b">🏷 QoS 类型确认</text>
+  <text id="s2-qos-a" x="800" y="281" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#374151">Guaranteed · Burstable · BestEffort</text>
+  <text id="s2-qos-b" x="800" y="298" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#374151">决定 OOM 优先级与驱逐顺序</text>
+  <text id="s2-qos" x="800" y="307" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#2952c8" font-weight="600">—</text>
+</g>
+
+<!-- c2→3 -->
+<g class="cg" id="c23">
+  <line x1="200" y1="312" x2="200" y2="352" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="500" y1="312" x2="500" y2="352" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="800" y1="312" x2="800" y2="352" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S3  三种 QoS 详情卡
+══════════════════════════════════════════════ -->
+<g class="ng" id="s3">
+  <!-- Guaranteed -->
+  <rect id="qos-g" x="60" y="352" width="280" height="90" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="200" y="372" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#14532d">✅ Guaranteed</text>
+  <text x="200" y="391" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">req == limit（CPU 和 Memory 均相等）</text>
+  <text x="200" y="408" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">OOM 优先级最低 · 最后被 Kill</text>
+  <text x="200" y="425" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">适合生产核心服务</text>
+  <text id="s3-g" x="200" y="436" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#15803d" font-weight="600">—</text>
+  <!-- Burstable -->
+  <rect id="qos-b" x="360" y="352" width="280" height="90" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="500" y="372" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#3b0f8a">⚡ Burstable</text>
+  <text x="500" y="391" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">req &lt; limit 或仅部分容器设置</text>
+  <text x="500" y="408" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">可突发到 limit · OOM 优先级中等</text>
+  <text x="500" y="425" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">适合弹性服务</text>
+  <text id="s3-b" x="500" y="436" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#7c3aed" font-weight="600">—</text>
+  <!-- BestEffort -->
+  <rect id="qos-be" x="660" y="352" width="280" height="90" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.3"/>
+  <text x="800" y="372" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#1e293b">🎲 BestEffort</text>
+  <text x="800" y="391" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#374151">无任何 requests / limits 设置</text>
+  <text x="800" y="408" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#374151">OOM 优先级最高 · 最先被 Kill</text>
+  <text x="800" y="425" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#374151">仅适合低优先级离线任务</text>
+  <text id="s3-be" x="800" y="436" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#64748b" font-weight="600">—</text>
+</g>
+
+<!-- c3→4 -->
+<g class="cg" id="c34">
+  <line x1="200" y1="442" x2="350" y2="488" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="500" y1="442" x2="500" y2="488" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="800" y1="442" x2="650" y2="488" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S4  内存压力触发
+══════════════════════════════════════════════ -->
+<g class="ng" id="s4">
+  <rect x="220" y="488" width="560" height="66" rx="10" fill="#fff7ed" stroke="#d97706" stroke-width="1.3"/>
+  <text x="500" y="508" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#78350f">⚠️ 节点内存压力 / Pod 内存超 Limit</text>
+  <text x="500" y="527" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">内核检测: Node MemoryPressure · cgroup memory.limit 触发</text>
+  <text x="500" y="544" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">Linux OOM Killer 激活 · 按 oom_score_adj 排序杀进程</text>
+  <!-- memory bar -->
+  <rect x="260" y="556" width="480" height="12" rx="5" fill="#fde8c8"/>
+  <rect id="mem-bar" class="banim" x="260" y="556" width="0" height="12" rx="5" fill="#ea580c" style="--bw:0px"/>
+  <text id="mem-pct" x="500" y="577" text-anchor="middle" font-size="10" fill="#92400e">内存使用率: 计算中...</text>
+</g>
+
+<!-- c4→5 -->
+<g class="cg" id="c45">
+  <line x1="380" y1="554" x2="260" y2="596" stroke="#dc2626" stroke-width="1.3" marker-end="url(#mr)"/>
+  <line x1="620" y1="554" x2="740" y2="596" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S5  OOM 优先级 + 驱逐顺序
+══════════════════════════════════════════════ -->
+<g class="ng" id="s5">
+  <!-- OOM 优先级 -->
+  <rect x="60" y="596" width="360" height="86" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="240" y="616" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#7f1d1d">💀 OOM Kill 优先级</text>
+  <text x="240" y="635" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#991b1b">BestEffort → oom_score_adj=1000（最先Kill）</text>
+  <text x="240" y="652" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#991b1b">Burstable   → oom_score_adj=2~999（按超出比例）</text>
+  <text x="240" y="669" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#991b1b">Guaranteed  → oom_score_adj=-997（最后Kill）</text>
+  <text id="s5-oom" x="240" y="678" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#dc2626" font-weight="600">—</text>
+  <!-- Kubelet 驱逐 -->
+  <rect x="580" y="596" width="360" height="86" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.3"/>
+  <text x="760" y="616" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#713f12">🚨 Kubelet 驱逐策略</text>
+  <text x="760" y="635" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#854d0e">软驱逐: memory.available&lt;500Mi → 宽限期后驱逐</text>
+  <text x="760" y="652" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#854d0e">硬驱逐: memory.available&lt;100Mi → 立即驱逐</text>
+  <text x="760" y="669" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#854d0e">优先驱逐 BestEffort → Burstable → Guaranteed</text>
+  <text id="s5-evict" x="760" y="678" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#ca8a04" font-weight="600">—</text>
+</g>
+
+<!-- c5→6 -->
+<g class="cg" id="c56">
+  <line x1="240" y1="682" x2="240" y2="722" stroke="#dc2626" stroke-width="1.3" marker-end="url(#mr)"/>
+  <line x1="760" y1="682" x2="760" y2="722" stroke="#ca8a04" stroke-width="1.2" marker-end="url(#mo)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S6  OOM Kill 执行 + Pod 重启
+══════════════════════════════════════════════ -->
+<g class="ng" id="s6">
+  <!-- OOM Kill -->
+  <rect id="r-oom" x="60" y="722" width="360" height="70" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="240" y="742" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#7f1d1d">💥 OOM Kill 执行</text>
+  <text x="240" y="760" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#991b1b">内核 kill -9 进程 · 释放内存 · 写 dmesg</text>
+  <text id="s6-oom" x="240" y="778" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#dc2626" font-weight="600">—</text>
+  <!-- 重启策略 -->
+  <rect x="580" y="722" width="360" height="70" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="760" y="742" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#14532d">🔄 Pod 重启 / 恢复</text>
+  <text x="760" y="760" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">restartPolicy: Always → Kubelet 自动重启</text>
+  <text id="s6-restart" x="760" y="778" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#15803d" font-weight="600">—</text>
+</g>
+
+<!-- c6→7 -->
+<g class="cg" id="c67">
+  <line x1="240" y1="792" x2="350" y2="832" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="760" y1="792" x2="650" y2="832" stroke="#16a34a" stroke-width="1.2" marker-end="url(#mg)"/>
+</g>
+
+<!-- ══════════════════════════════════════════
+     S7  最佳实践 + 闭环
+══════════════════════════════════════════════ -->
+<g class="ng" id="s7">
+  <rect x="200" y="832" width="600" height="54" rx="10" fill="#f0f4ff" stroke="#2952c8" stroke-width="1.2"/>
+  <text x="500" y="851" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#18286a">💡 最佳实践 · 避免 OOM</text>
+  <text x="500" y="870" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2a3a7a">设置合理 requests/limits · 使用 VPA 自动推荐 · 监控 container_memory_working_set_bytes · 配置 HPA</text>
+</g>
+
+<!-- 闭环反馈箭头 -->
+<g class="ng" id="s8">
+  <path d="M200 858 L28 858 L28 52 L300 52" fill="none" stroke="#b4c0d4" stroke-width=".9" stroke-dasharray="5 4" marker-end="url(#ma)"/>
+  <text x="18" y="460" text-anchor="middle" font-size="10" fill="#a4b0c4" transform="rotate(-90,18,460)">监控 · 调优 · 持续迭代</text>
+</g>
+
+</svg>
+</div>
+
+<div class="dots" id="dots"></div>
+<div class="info" id="info">选择 QoS 场景后点击「播放」，或逐步浏览 Request→Limit→QoS→OOM 完整流程</div>
+
+<script>
+/* ── 场景数据 ── */
+const SC = [
+  { /* 0: Guaranteed */
+    yaml:'req==limit: {cpu:"500m",memory:"512Mi"} requests==limits',
+    req:'cpu: 500m  |  memory: 512Mi',
+    lim:'cpu: 500m  |  memory: 512Mi（与 request 完全相等）',
+    sched:'调度至内存可用 ≥ 512Mi 的节点',
+    cpu:'CPU 超出 500m → cgroup throttle 限速，不 Kill',
+    qos:'✅ Guaranteed（req == limit，最高优先级保护）',
+    qosG:'🟢 本场景 · oom_score_adj = -997 · 最后被 OOM Kill',
+    qosB:'— 不适用',  qosBE:'— 不适用',
+    memPct:75, memLabel:'内存使用: 75% (稳定运行中)',
+    oomPri:'当前 Pod: Guaranteed · oom_score_adj=-997 · OOM 最后考虑',
+    evict:'驱逐时 Guaranteed Pod 优先级最低，只在极端情况下被驱逐',
+    oomKill:'本场景内存 75% 未超限，OOM Kill 未触发',
+    restart:'Pod 稳定运行，无重启',
+    tips:[
+      '【YAML 定义】Pod resources 字段中 requests.cpu=500m requests.memory=512Mi limits.cpu=500m limits.memory=512Mi，requests 完全等于 limits',
+      '【requests 语义】调度器确认节点 Allocatable.memory ≥ 512Mi 才调度，保障 Pod 基础运行资源',
+      '【limits 语义】CPU 超出 500m 触发 cgroup throttle 限速；内存超 512Mi 触发 OOM Kill（内存不可压缩）',
+      '【QoS 判定】CPU 和 Memory 的 requests == limits → 判定为 Guaranteed，最高优先级保护',
+      '【调度与 CPU Throttle】调度成功，运行期 CPU 不超 500m；如有突发则 throttle 限速，延迟上升但不 Kill',
+      '【Guaranteed 卡】oom_score_adj=-997，内核 OOM Killer 最后才考虑此类 Pod',
+      '【内存压力模拟】当前内存使用 75%，未达到 limit，节点无 MemoryPressure',
+      '【OOM Kill 流程】本场景未触发 OOM Kill；如触发，BestEffort 和 Burstable Pod 会优先被杀',
+      '【最佳实践】Guaranteed 适合生产核心服务，建议配合 VPA 自动推荐合理值，避免过度申请浪费资源'
+    ]
+  },
+  { /* 1: Burstable */
+    yaml:'req < limit: requests{cpu:"250m",mem:"256Mi"} limits{cpu:"1",mem:"1Gi"}',
+    req:'cpu: 250m  |  memory: 256Mi（基础保障）',
+    lim:'cpu: 1000m  |  memory: 1Gi（可突发上限）',
+    sched:'调度至内存可用 ≥ 256Mi 的节点（按 request 调度）',
+    cpu:'CPU 可突发至 1000m，超出后 throttle；内存可突发至 1Gi',
+    qos:'⚡ Burstable（req < limit，中等优先级）',
+    qosG:'— 不适用',
+    qosB:'🟣 本场景 · oom_score_adj 约 500 · OOM 时优先级中等',
+    qosBE:'— 不适用',
+    memPct:88, memLabel:'内存使用: 88%（接近 limit 1Gi，存在 OOM 风险）',
+    oomPri:'Burstable Pod: oom_score_adj ≈ 500 · OOM 时先于 Guaranteed 被 Kill',
+    evict:'内存压力时 Burstable 在 BestEffort 之后被驱逐',
+    oomKill:'内存接近 1Gi limit → 内核可能触发 OOM Kill 该 Pod 进程',
+    restart:'OOM Kill 后 Kubelet 按 restartPolicy:Always 重启，OOMKilled 计入 restartCount',
+    tips:[
+      '【YAML 定义】requests{cpu:250m,memory:256Mi} limits{cpu:1,memory:1Gi}，requests 小于 limits，允许突发使用',
+      '【requests 语义】调度器按 256Mi 内存查找节点，但实际运行时可使用到 1Gi',
+      '【limits 语义】CPU 超 1 核触发 throttle；内存超 1Gi → cgroup memory.limit 触发 OOM Kill',
+      '【QoS 判定】requests < limits → 判定为 Burstable，OOM 优先级中等（oom_score_adj ≈ 500）',
+      '【调度与突发】按 250m/256Mi 调度，运行时可突发至 1/1Gi；节点内存紧张时其他 Pod 也受影响',
+      '【Burstable 卡】中等 OOM 优先级，内存超出 request 越多，oom_score_adj 越高，越先被 Kill',
+      '【内存压力】当前使用 88% 接近 1Gi limit，存在 OOM 风险，建议配置内存告警',
+      '【OOM Kill 流程】内存超 1Gi → 内核 kill -9 → Pod 状态 OOMKilled → Kubelet 重启',
+      '【最佳实践】Burstable 适合弹性 Web 服务；建议 limit/request 比值不超 4x；配合 HPA 动态扩容'
+    ]
+  },
+  { /* 2: BestEffort */
+    yaml:'无任何 resources 设置（requests 和 limits 均未配置）',
+    req:'未设置（BestEffort 无 requests 保障）',
+    lim:'未设置（无限制，抢占节点所有空闲资源）',
+    sched:'调度器不检查资源，可调度至任意节点（可能与其他 Pod 竞争）',
+    cpu:'无 CPU limit，可能占满节点 CPU 影响其他 Pod',
+    qos:'🎲 BestEffort（无任何设置，OOM 优先级最高）',
+    qosG:'— 不适用',  qosB:'— 不适用',
+    qosBE:'🔴 本场景 · oom_score_adj=1000 · OOM 时第一个被 Kill',
+    memPct:95, memLabel:'内存使用: 95%（无 limit 保护，随时可被 OOM Kill）',
+    oomPri:'BestEffort: oom_score_adj=1000（最大值）→ OOM 时第一个被内核 Kill',
+    evict:'节点内存不足时 BestEffort Pod 第一个被 Kubelet 驱逐',
+    oomKill:'内存高达 95% → 内核 OOM Killer 优先 Kill 本 Pod（oom_score_adj=1000）',
+    restart:'OOM Kill 后按 restartPolicy 重启，若持续 OOM 则进入 CrashLoopBackOff',
+    tips:[
+      '【YAML 定义】Pod 未配置任何 resources 字段，无 requests 也无 limits，即 BestEffort QoS 类型',
+      '【requests 语义】无 requests → 调度器不做资源检查，Pod 可调度到任意节点，存在资源竞争风险',
+      '【limits 语义】无 limits → Pod 可无限制使用内存，极易导致节点整体 MemoryPressure',
+      '【QoS 判定】无任何资源配置 → 判定为 BestEffort，oom_score_adj=1000，OOM 时第一个被 Kill',
+      '【调度问题】无资源约束的 Pod 可能"饿死"其他 Pod，导致节点 CPU/内存压力蔓延',
+      '【BestEffort 卡】oom_score_adj=1000 为最高值，内核 OOM Killer 优先选择此类进程终止',
+      '【内存危机】无 limit 保护，内存使用率 95%，节点即将触发硬驱逐（evictionHard）',
+      '【OOM Kill 流程】内核扫描 oom_score_adj → 选中本 Pod 进程 → kill -9 → Kubelet 检测到 → 重启',
+      '【最佳实践】生产环境禁止使用 BestEffort；可用于批处理/测试任务；建议配置 LimitRange 设置命名空间默认值'
+    ]
+  },
+  { /* 3: OOM Kill 全流程 */
+    yaml:'Burstable Pod 内存持续增长超过 limit: 512Mi → 触发 OOM Kill',
+    req:'cpu: 100m  |  memory: 256Mi',
+    lim:'cpu: 500m  |  memory: 512Mi（内存超限触发 OOM）',
+    sched:'调度成功；运行后内存泄漏，持续增长超过 512Mi',
+    cpu:'CPU 正常；内存超 512Mi → cgroup memory.limit_in_bytes 触发',
+    qos:'⚡ Burstable → OOM Kill → Pod 重启 (OOMKilled)',
+    qosG:'— 不参与',
+    qosB:'🟣 本 Pod Burstable · 内存超 limit → 触发 OOM Kill',
+    qosBE:'— 不参与',
+    memPct:100, memLabel:'内存使用: 100% 超过 limit 512Mi ⚠️ OOM Kill 触发！',
+    oomPri:'超出 limit → 内核直接 OOM Kill 该容器进程（不经过 Kubelet 驱逐）',
+    evict:'本场景为容器内 OOM（超 limit），非节点级驱逐',
+    oomKill:'💥 内核 OOM Killer 执行: kill -9 → 容器退出码 137 → dmesg "Out of memory" → Kubelet 检测',
+    restart:'Kubelet 检测到 OOMKilled → 按指数退避重启 → kubectl describe 显示 OOMKilled · restartCount++',
+    tips:[
+      '【YAML 定义】limits.memory=512Mi，Pod 内应用存在内存泄漏，内存持续增长超过 512Mi',
+      '【requests/limits】requests=256Mi 保障调度；limits=512Mi 是内存硬上限，超出则 OOM Kill',
+      '【CPU 与内存差异】CPU 超限只 throttle 限速；内存超限直接 OOM Kill（内存是不可压缩资源）',
+      '【QoS 分级】Burstable → 内存超出 limit → cgroup memory.limit_in_bytes 触发 → OOM Kill 激活',
+      '【cgroup 触发】container 内存使用超过 memory.limit_in_bytes → 内核调用 OOM Killer',
+      '【OOM 优先级排序】内核按 oom_score_adj 从高到低选择目标 → Burstable 本 Pod 被选中',
+      '【内存超 100%】内存超限 → 内核立即执行 OOM Kill，不经过 Kubelet 驱逐流程',
+      '【OOM Kill 执行】内核 kill -9 容器主进程 → 退出码 137 → 容器状态 OOMKilled → Kubelet 重启',
+      '【排查与修复】kubectl describe pod 查看 OOMKilled；调大 limits 或修复内存泄漏；配置 VPA 自动推荐'
+    ]
+  }
+];
+
+const SIDS=['s0','s1','s2','s3','s4','s5','s6','s7','s8'];
+const CIDS=[null,'c01','c12','c23','c34','c45','c56','c67',null];
+let cur=-1,playing=false,timer=null,spd=900,scene=0;
+
+const dotsEl=document.getElementById('dots');
+const infoEl=document.getElementById('info');
+const btnPlay=document.getElementById('btnPlay');
+
+SIDS.forEach((_,i)=>{
+  const d=document.createElement('div');
+  d.className='dot';d.onclick=()=>jumpTo(i);dotsEl.appendChild(d);
+});
+function updDots(){dotsEl.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('on',i===cur));}
+
+function applySceneData(sc){
+  const s=SC[sc];
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('s0-extra', s.yaml);
+  set('s1-req', s.req); set('s1-lim', s.lim);
+  set('s2-sched', s.sched); set('s2-cpu', s.cpu); set('s2-qos', s.qos);
+  set('s3-g', s.qosG); set('s3-b', s.qosB); set('s3-be', s.qosBE);
+  set('s5-oom', s.oomPri); set('s5-evict', s.evict);
+  set('s6-oom', s.oomKill); set('s6-restart', s.restart);
+  // memory bar
+  const mb=document.getElementById('mem-bar');
+  const pct=s.memPct;
+  mb.style.setProperty('--bw', Math.round(pct/100*480)+'px');
+  mb.style.width='0'; mb.classList.remove('banim');
+  setTimeout(()=>{mb.classList.add('banim'); mb.style.width=Math.round(pct/100*480)+'px';},80);
+  mb.setAttribute('fill', pct>=100?'#dc2626': pct>=85?'#ea580c':'#f97316');
+  set('mem-pct', s.memLabel);
+  // QoS highlight
+  ['qos-g','qos-b','qos-be'].forEach(id=>{
+    const el=document.getElementById(id); if(!el)return;
+    el.setAttribute('stroke-width','1.3');
+  });
+  const hiMap={0:'qos-g',1:'qos-b',2:'qos-be',3:'qos-b'};
+  const hi=document.getElementById(hiMap[sc]);
+  if(hi){hi.setAttribute('stroke-width','2.5');}
+  // OOM box highlight
+  const ro=document.getElementById('r-oom');
+  if(ro){
+    ro.setAttribute('fill', (sc===3||sc===2)?'#fca5a5':'#fee2e2');
+    ro.setAttribute('stroke-width', (sc===3||sc===2)?'2.2':'1.3');
+  }
+}
+
+function showStep(idx){
+  if(idx<0||idx>=SIDS.length)return;
+  document.getElementById(SIDS[idx]).classList.add('v');
+  if(CIDS[idx]){const el=document.getElementById(CIDS[idx]);if(el)el.classList.add('v');}
+  if(idx>=1) applySceneData(scene);
+  infoEl.textContent=SC[scene].tips[idx];
+  cur=idx; updDots();
+}
+
+function jumpTo(idx){if(idx<=cur)return; for(let i=cur+1;i<=idx;i++)showStep(i);}
+function stepFwd(){stopPlay(); if(cur<SIDS.length-1)showStep(cur+1);}
+function stepBk(){
+  stopPlay();
+  if(cur<=0){doReset();return;}
+  const t=cur-1; doReset(true); for(let i=0;i<=t;i++)showStep(i);
+}
+function doReset(silent){
+  stopPlay();
+  document.querySelectorAll('.ng,.cg').forEach(el=>el.classList.remove('v'));
+  ['s0-extra','s1-req','s1-lim','s2-sched','s2-cpu','s2-qos',
+   's3-g','s3-b','s3-be','s5-oom','s5-evict','s6-oom','s6-restart'].forEach(id=>{
+    const e=document.getElementById(id); if(e)e.textContent='—';
+  });
+  const mb=document.getElementById('mem-bar');
+  if(mb){mb.style.width='0';mb.classList.remove('banim');}
+  document.getElementById('mem-pct').textContent='内存使用率: 计算中...';
+  ['qos-g','qos-b','qos-be'].forEach(id=>{
+    const el=document.getElementById(id); if(el)el.setAttribute('stroke-width','1.3');
+  });
+  const ro=document.getElementById('r-oom');
+  if(ro){ro.setAttribute('fill','#fee2e2');ro.setAttribute('stroke-width','1.3');}
+  cur=-1; updDots();
+  if(!silent) infoEl.textContent='选择 QoS 场景后点击「播放」，或逐步浏览 Request→Limit→QoS→OOM 完整流程';
+}
+function togglePlay(){if(playing)stopPlay();else startPlay();}
+function startPlay(){
+  playing=true; btnPlay.textContent='⏸ 暂停';
+  function nx(){
+    if(cur>=SIDS.length-1){stopPlay();return;}
+    showStep(cur+1); timer=setTimeout(nx,spd);
+  }
+  timer=setTimeout(nx,cur===-1?200:spd);
+}
+function stopPlay(){playing=false;clearTimeout(timer);btnPlay.textContent='▶ 播放';}
+function setScene(n){
+  scene=n;
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',i===n));
+  doReset(false);
+}
+</script>
+</body>
+</html>

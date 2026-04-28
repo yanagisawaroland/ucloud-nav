@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K8s DevOps 逻辑关系与流程图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #f5f7fa;
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, 'Helvetica Neue', sans-serif;
+            padding: 40px 20px;
+            color: #1f2d3d;
+        }
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            background: #ffffffdd;
+            backdrop-filter: blur(2px);
+            border-radius: 32px;
+            padding: 30px;
+            box-shadow: 0 20px 35px -10px rgba(0,0,0,0.05);
+            border: 1px solid rgba(255,255,255,0.6);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #1e6f9f, #2c9ab7);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .sub {
+            text-align: center;
+            color: #5a6e8a;
+            margin-bottom: 40px;
+            font-size: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: inline-block;
+            width: auto;
+            margin-left: auto;
+            margin-right: auto;
+            padding-bottom: 8px;
+        }
+        .flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .stage {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 20px 25px;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.02), 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+            border-left: 5px solid;
+        }
+        .stage:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 25px -12px rgba(0,0,0,0.1);
+        }
+        .stage.dev { border-left-color: #3b82f6; }
+        .stage.build { border-left-color: #f59e0b; }
+        .stage.registry { border-left-color: #8b5cf6; }
+        .stage.deploy { border-left-color: #10b981; }
+        .stage.operate { border-left-color: #ef4444; }
+        .stage-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .stage-desc {
+            font-size: 1rem;
+            color: #334155;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+        .relation {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .badge {
+            background: #f1f5f9;
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #1e293b;
+        }
+        .arrow {
+            text-align: center;
+            font-size: 1.8rem;
+            color: #94a3b8;
+            margin: -5px 0;
+        }
+        .dynamic-line {
+            height: 3px;
+            background: linear-gradient(90deg, #3b82f6, #10b981, #f59e0b);
+            width: 100%;
+            border-radius: 3px;
+            animation: flowLight 2.5s infinite alternate;
+        }
+        @keyframes flowLight {
+            0% { opacity: 0.4; background-position: 0% 50%; }
+            100% { opacity: 1; background-position: 100% 50%; }
+        }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 0.8rem;
+            color: #7c8b9f;
+        }
+        @media (max-width: 700px) {
+            .container { padding: 20px; }
+            .stage-title { font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>☸️ Kubernetes + DevOps 逻辑关系与流程</h1>
+    <div style="text-align: center;"><span class="sub">动态 CI/CD 流水线 · 持续交付核心链路</span></div>
+
+    <div class="flow-container">
+        <div class="stage dev">
+            <div class="stage-title"><span>📝 1. 开发阶段</span></div>
+            <div class="stage-desc">开发者提交代码到 Git 仓库，触发 Webhook。<br>分支策略: feature → develop → main/release。</div>
+            <div class="relation"><span class="badge">Git 版本控制</span><span class="badge">代码评审 PR</span><span class="badge">SonarQube 静态扫描</span></div>
+        </div>
+        <div class="arrow">⬇️</div>
+        <div class="stage build">
+            <div class="stage-title"><span>📦 2. 构建 & 单元测试</span></div>
+            <div class="stage-desc">CI 系统拉取代码，执行 Maven/Gradle 构建，运行单元测试，产出 Jar/二进制文件。</div>
+            <div class="relation"><span class="badge">Maven/Gradle</span><span class="badge">JUnit/TestNG</span><span class="badge">SpotBugs</span></div>
+        </div>
+        <div class="arrow">⬇️</div>
+        <div class="stage registry">
+            <div class="stage-title"><span>🐳 3. 镜像构建 & 推送仓库</span></div>
+            <div class="stage-desc">编写 Dockerfile，构建容器镜像，推送到 Harbor / Docker Hub。<br>镜像标签: commit hash + 环境标识。</div>
+            <div class="relation"><span class="badge">Docker/Containerd</span><span class="badge">Harbor</span><span class="badge">镜像安全扫描</span></div>
+        </div>
+        <div class="arrow">⬇️</div>
+        <div class="stage deploy">
+            <div class="stage-title"><span>🚀 4. Kubernetes 部署</span></div>
+            <div class="stage-desc">ArgoCD / Flux 或 kubectl apply 将资源部署到 K8s 集群。<br>支持蓝绿/金丝雀发布，滚动更新策略。</div>
+            <div class="relation"><span class="badge">Helm Charts</span><span class="badge">Kustomize</span><span class="badge">ArgoCD</span><span class="badge">服务网格</span></div>
+        </div>
+        <div class="arrow">⬇️</div>
+        <div class="stage operate">
+            <div class="stage-title"><span>📊 5. 可观测性 & 运维</span></div>
+            <div class="stage-desc">Prometheus 采集指标，Grafana 展示仪表盘，Loki 收集日志，Jaeger 链路追踪。<br>基于 HPA 自动扩缩容，告警通知。</div>
+            <div class="relation"><span class="badge">Prometheus+Grafana</span><span class="badge">Loki/ELK</span><span class="badge">Jaeger/Kiali</span><span class="badge">VPA/HPA</span></div>
+        </div>
+    </div>
+
+    <div class="dynamic-line" style="margin: 30px 0 10px;"></div>
+    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
+        <div style="flex:1; background:#f8fafc; border-radius: 20px; padding: 14px; text-align:center;">
+            <span style="font-weight:bold;">🔄 逻辑关系</span><br>
+            <span style="font-size:0.9rem;">代码变更 → CI 自动构建 → 镜像升级 → CD 触发部署 → 监控反馈 → 优化迭代</span>
+        </div>
+        <div style="flex:1; background:#f8fafc; border-radius: 20px; padding: 14px; text-align:center;">
+            <span style="font-weight:bold;">⚙️ 动态特性</span><br>
+            <span style="font-size:0.9rem;">GitOps 声明式 + 事件驱动流水线 + 自动回滚 + 智能告警</span>
+        </div>
+    </div>
+    <footer>⏱️ 实时流程动态演示 | 基于 Kubernetes 的云原生 DevOps 最佳实践</footer>
+</div>
+</body>
+</html>

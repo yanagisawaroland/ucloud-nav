@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>K8s DevOps 全链路动态流程</title>
+
+<style>
+body {
+  background: #f6f9fc;
+  font-family: "Segoe UI", Arial;
+  text-align: center;
+}
+
+h1 {
+  margin: 20px;
+}
+
+svg {
+  margin-top: 20px;
+}
+
+.node {
+  fill: #ffffff;
+  stroke: #409eff;
+  stroke-width: 2;
+  rx: 10;
+  ry: 10;
+  transition: 0.4s;
+}
+
+.active {
+  fill: #409eff;
+  stroke: #1d78d6;
+}
+
+text {
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.line {
+  stroke: #bbb;
+  stroke-width: 2;
+  marker-end: url(#arrow);
+}
+
+.flow {
+  stroke: #67c23a;
+  stroke-width: 3;
+  stroke-dasharray: 6;
+  animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+  to { stroke-dashoffset: -20; }
+}
+
+.controls button {
+  margin: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  background: #409eff;
+  color: white;
+  cursor: pointer;
+}
+
+.controls button:hover {
+  background: #66b1ff;
+}
+</style>
+</head>
+
+<body>
+
+<h1>K8s DevOps 全链路流程图</h1>
+
+<div class="controls">
+  <button onclick="start()">▶ 开始</button>
+  <button onclick="pause()">⏸ 暂停</button>
+  <button onclick="reset()">⏹ 重置</button>
+  <button onclick="speedUp()">⏩ 加速</button>
+  <button onclick="slowDown()">⏪ 减速</button>
+</div>
+
+<svg width="1000" height="420">
+
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto">
+  <path d="M0,0 L10,5 L0,10 Z" fill="#bbb"/>
+</marker>
+</defs>
+
+<!-- 节点 -->
+<g id="nodes">
+  <rect class="node" x="50" y="150" width="120" height="50"/>
+  <text x="110" y="180">开发提交</text>
+
+  <rect class="node" x="220" y="150" width="120" height="50"/>
+  <text x="280" y="180">Git仓库</text>
+
+  <rect class="node" x="390" y="150" width="120" height="50"/>
+  <text x="450" y="180">CI构建</text>
+
+  <rect class="node" x="560" y="150" width="120" height="50"/>
+  <text x="620" y="180">镜像构建</text>
+
+  <rect class="node" x="730" y="150" width="120" height="50"/>
+  <text x="790" y="180">镜像仓库</text>
+
+  <rect class="node" x="300" y="300" width="120" height="50"/>
+  <text x="360" y="330">CD部署</text>
+
+  <rect class="node" x="550" y="300" width="120" height="50"/>
+  <text x="610" y="330">K8s集群</text>
+</g>
+
+<!-- 连线 -->
+<line class="line" x1="170" y1="175" x2="220" y2="175"/>
+<line class="line" x1="340" y1="175" x2="390" y2="175"/>
+<line class="line" x1="510" y1="175" x2="560" y2="175"/>
+<line class="line" x1="680" y1="175" x2="730" y2="175"/>
+<line class="line" x1="790" y1="200" x2="360" y2="300"/>
+<line class="line" x1="420" y1="325" x2="550" y2="325"/>
+
+</svg>
+
+<script>
+let nodes = document.querySelectorAll('.node');
+let i = 0;
+let timer = null;
+let speed = 1000;
+
+function highlight() {
+  nodes.forEach(n => n.classList.remove('active'));
+  nodes[i].classList.add('active');
+  i = (i + 1) % nodes.length;
+}
+
+function start() {
+  if (!timer) timer = setInterval(highlight, speed);
+}
+
+function pause() {
+  clearInterval(timer);
+  timer = null;
+}
+
+function reset() {
+  pause();
+  nodes.forEach(n => n.classList.remove('active'));
+  i = 0;
+}
+
+function speedUp() {
+  speed = Math.max(200, speed - 200);
+  restart();
+}
+
+function slowDown() {
+  speed += 200;
+  restart();
+}
+
+function restart() {
+  if (timer) {
+    pause();
+    start();
+  }
+}
+</script>
+
+</body>
+</html>

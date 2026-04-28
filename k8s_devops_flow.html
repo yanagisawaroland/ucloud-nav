@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>K8s DevOps Pipeline Visualizer</title>
+    <style>
+        :root { --primary: #3498db; --success: #2ecc71; --bg: #f4f7f9; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 40px; }
+        .canvas { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 900px; position: relative; }
+        .pipeline { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2; }
+        .stage { text-align: center; width: 120px; }
+        .icon-box { width: 80px; height: 80px; background: #fff; border: 3px solid #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; transition: 0.5s; font-weight: bold; color: #7f8c8d; }
+        .active .icon-box { border-color: var(--success); color: var(--success); box-shadow: 0 0 15px rgba(46, 204, 113, 0.4); transform: scale(1.1); }
+        .line-container { position: absolute; top: 80px; left: 10%; width: 80%; height: 4px; background: #eee; z-index: 1; }
+        .progress-bar { height: 100%; width: 0%; background: var(--success); transition: 0.3s; }
+        .controls { margin-top: 50px; display: flex; gap: 15px; }
+        button { padding: 12px 25px; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; transition: 0.3s; background: #34495e; color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+        .status-msg { margin-top: 20px; color: #34495e; font-size: 1.1em; height: 1.5em; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>K8s Cloud Native DevOps 流转逻辑</h1>
+    <div class="canvas">
+        <div class="line-container"><div class="progress-bar" id="pb"></div></div>
+        <div class="pipeline">
+            <div class="stage" id="s1"><div class="icon-box">Git</div><span>代码提交</span></div>
+            <div class="stage" id="s2"><div class="icon-box">Build</div><span>镜像构建</span></div>
+            <div class="stage" id="s3"><div class="icon-box">Harbor</div><span>镜像仓库</span></div>
+            <div class="stage" id="s4"><div class="icon-box">ArgoCD</div><span>持续部署</span></div>
+            <div class="stage" id="s5"><div class="icon-box">K8s</div><span>集群运行</span></div>
+        </div>
+    </div>
+    <div class="status-msg" id="msg">等待指令...</div>
+    <div class="controls">
+        <button onclick="reset()">重置</button>
+        <button onclick="nextStep()" style="background:var(--primary)">下一步</button>
+        <button onclick="autoPlay()" style="background:var(--success)">自动演示</button>
+    </div>
+
+    <script>
+        let current = 0;
+        const messages = ["", "触发 Webhook，拉取代码...", "Docker 构建中，层级压缩...", "推送至私有镜像库 Harbor...", "ArgoCD 同步清单，执行 Apply...", "Pod 状态就绪，流量接入！"];
+        function nextStep() {
+            if(current < 5) {
+                current++;
+                updateUI();
+            }
+        }
+        function updateUI() {
+            for(let i=1; i<=5; i++) {
+                document.getElementById('s'+i).classList.toggle('active', i <= current);
+            }
+            document.getElementById('pb').style.width = ((current-1)/4 * 100) + '%';
+            document.getElementById('msg').innerText = messages[current];
+        }
+        function reset() { current = 0; updateUI(); document.getElementById('pb').style.width = '0%'; }
+        async function autoPlay() {
+            reset();
+            for(let i=0; i<5; i++) {
+                await new Promise(r => setTimeout(r, 1000));
+                nextStep();
+            }
+        }
+    </script>
+</body>
+</html>

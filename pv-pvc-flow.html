@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PV/PVC 存储绑定流程</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+SC:wght@300;400;700;900&display=swap');
+
+  :root {
+    --bg:        #f0f4f8;
+    --surface:   #ffffff;
+    --border:    #d0dbe8;
+    --text:      #1a2332;
+    --muted:     #5a7080;
+    --sc-color:  #2563eb;
+    --pv-color:  #0891b2;
+    --pvc-color: #7c3aed;
+    --pod-color: #059669;
+    --arrow:     #64748b;
+    --accent:    #f59e0b;
+    --glow-sc:   rgba(37,99,235,0.18);
+    --glow-pv:   rgba(8,145,178,0.18);
+    --glow-pvc:  rgba(124,58,237,0.18);
+    --glow-pod:  rgba(5,150,105,0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Noto Sans SC', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 48px;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  header h1 {
+    font-size: clamp(1.6rem, 4vw, 2.6rem);
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+  }
+  header h1 span { color: var(--sc-color); }
+  header p {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 0.95rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+  }
+  .btn {
+    padding: 10px 22px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    transition: all .2s;
+    font-weight: 700;
+  }
+  .btn:hover { border-color: var(--sc-color); color: var(--sc-color); transform: translateY(-1px); }
+  .btn.primary { background: var(--sc-color); color: #fff; border-color: var(--sc-color); }
+  .btn.primary:hover { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .btn.danger { border-color: #ef4444; color: #ef4444; }
+  .btn.danger:hover { background: #ef4444; color: #fff; }
+
+  /* ── Speed slider ── */
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 32px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  input[type=range] { accent-color: var(--sc-color); width: 120px; }
+
+  /* ── Flow canvas ── */
+  .flow-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px 28px 36px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.07);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Subtle grid background */
+  .flow-wrap::before {
+    content:'';
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* ── Pipeline row ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    position: relative;
+    z-index: 1;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  /* ── Node card ── */
+  .node {
+    flex-shrink: 0;
+    width: 168px;
+    border-radius: 16px;
+    border: 2.5px solid transparent;
+    background: var(--surface);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    padding: 22px 16px 18px;
+    text-align: center;
+    position: relative;
+    transition: box-shadow .3s, transform .3s;
+    opacity: 0.4;
+    transform: translateY(8px);
+  }
+  .node.active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .node.sc  { border-color: var(--sc-color);  box-shadow: 0 0 28px var(--glow-sc); }
+  .node.pv  { border-color: var(--pv-color);  box-shadow: 0 0 28px var(--glow-pv); }
+  .node.pvc { border-color: var(--pvc-color); box-shadow: 0 0 28px var(--glow-pvc);}
+  .node.pod { border-color: var(--pod-color); box-shadow: 0 0 28px var(--glow-pod);}
+
+  .node-icon {
+    font-size: 2.4rem;
+    line-height: 1;
+    margin-bottom: 10px;
+    filter: grayscale(1);
+    transition: filter .3s;
+  }
+  .node.active .node-icon { filter: grayscale(0); }
+
+  .node-label {
+    font-size: 1.05rem;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .node.sc  .node-label { color: var(--sc-color); }
+  .node.pv  .node-label { color: var(--pv-color); }
+  .node.pvc .node-label { color: var(--pvc-color);}
+  .node.pod .node-label { color: var(--pod-color);}
+
+  .node-sub {
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* badge on active node */
+  .node-badge {
+    position: absolute;
+    top: -10px; right: -10px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 900;
+    opacity: 0;
+    transition: opacity .3s .2s;
+    color: #fff;
+  }
+  .node.active .node-badge { opacity: 1; }
+  .node.sc  .node-badge { background: var(--sc-color); }
+  .node.pv  .node-badge { background: var(--pv-color); }
+  .node.pvc .node-badge { background: var(--pvc-color);}
+  .node.pod .node-badge { background: var(--pod-color);}
+
+  /* ── Arrow connector ── */
+  .arrow-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    width: 72px;
+    position: relative;
+  }
+  .arrow-line {
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .arrow-fill {
+    position: absolute;
+    left: -100%; top: 0;
+    height: 100%;
+    width: 100%;
+    border-radius: 2px;
+    transition: left 0.5s cubic-bezier(.4,0,.2,1);
+  }
+  .arrow-wrap.flowing .arrow-fill { left: 0; }
+
+  .arrow-wrap:nth-child(2) .arrow-fill { background: linear-gradient(90deg, var(--sc-color), var(--pv-color)); }
+  .arrow-wrap:nth-child(4) .arrow-fill { background: linear-gradient(90deg, var(--pv-color), var(--pvc-color)); }
+  .arrow-wrap:nth-child(6) .arrow-fill { background: linear-gradient(90deg, var(--pvc-color), var(--pod-color)); }
+
+  .arrow-head {
+    color: var(--arrow);
+    font-size: 1.1rem;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity .3s, color .3s;
+  }
+  .arrow-wrap.flowing .arrow-head { opacity: 1; }
+  .arrow-wrap:nth-child(2).flowing .arrow-head { color: var(--pv-color); }
+  .arrow-wrap:nth-child(4).flowing .arrow-head { color: var(--pvc-color); }
+  .arrow-wrap:nth-child(6).flowing .arrow-head { color: var(--pod-color); }
+
+  .arrow-tag {
+    font-size: 0.65rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .3s .3s;
+  }
+  .arrow-wrap.flowing .arrow-tag { opacity: 1; }
+
+  /* ── Info panel ── */
+  .info-panel {
+    max-width: 1100px;
+    margin: 28px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    min-height: 110px;
+    position: relative;
+    overflow: hidden;
+  }
+  .info-step {
+    display: none;
+    animation: fadeSlide .4s ease;
+  }
+  .info-step.show { display: block; }
+  @keyframes fadeSlide {
+    from { opacity:0; transform: translateY(6px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+  .info-step h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .info-step h3 .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .info-step p {
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .info-step code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+
+  /* ── Step progress bar ── */
+  .progress-bar {
+    max-width: 1100px;
+    margin: 20px auto 0;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 0 4px;
+  }
+  .progress-seg {
+    flex: 1;
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-seg-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(.4,0,.2,1);
+  }
+  .progress-seg:nth-child(1) .progress-seg-fill { background: var(--sc-color); }
+  .progress-seg:nth-child(2) .progress-seg-fill { background: var(--pv-color); }
+  .progress-seg:nth-child(3) .progress-seg-fill { background: var(--pvc-color); }
+  .progress-seg:nth-child(4) .progress-seg-fill { background: var(--pod-color); }
+
+  /* ── Logic diagram section ── */
+  .logic-section {
+    max-width: 1100px;
+    margin: 32px auto 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
+  }
+  .logic-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    border-left: 4px solid transparent;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .logic-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.09); }
+  .logic-card.sc  { border-left-color: var(--sc-color); }
+  .logic-card.pv  { border-left-color: var(--pv-color); }
+  .logic-card.pvc { border-left-color: var(--pvc-color);}
+  .logic-card.pod { border-left-color: var(--pod-color);}
+  .logic-card h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .logic-card.sc  h4 { color: var(--sc-color); }
+  .logic-card.pv  h4 { color: var(--pv-color); }
+  .logic-card.pvc h4 { color: var(--pvc-color);}
+  .logic-card.pod h4 { color: var(--pod-color);}
+  .logic-card ul {
+    list-style: none;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 2;
+  }
+  .logic-card ul li::before {
+    content: '▸ ';
+    opacity: 0.5;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 0.75rem;
+    color: #b0bec5;
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>PV / PVC</span> 存储绑定流程</h1>
+  <p>StorageClass → PersistentVolume → PersistentVolumeClaim → Pod</p>
+</header>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn primary" id="btnPlay">▶ 开始演示</button>
+  <button class="btn" id="btnPrev">◀ 上一步</button>
+  <button class="btn" id="btnNext">▶ 下一步</button>
+  <button class="btn" id="btnAuto">⏯ 自动播放</button>
+  <button class="btn danger" id="btnReset">↺ 重置</button>
+</div>
+<div class="speed-wrap">
+  <span>速度:</span>
+  <input type="range" id="speedSlider" min="500" max="3000" value="1400" step="100">
+  <span id="speedLabel">1.4s</span>
+</div>
+
+<!-- Progress -->
+<div class="progress-bar">
+  <div class="progress-seg"><div class="progress-seg-fill" id="prog0"></div></div>
+  <div class="progress-seg"><div class="progress-seg-fill" id="prog1"></div></div>
+  <div class="progress-seg"><div class="progress-seg-fill" id="prog2"></div></div>
+  <div class="progress-seg"><div class="progress-seg-fill" id="prog3"></div></div>
+</div>
+
+<!-- Pipeline -->
+<div class="flow-wrap">
+  <div class="pipeline">
+
+    <!-- StorageClass -->
+    <div class="node sc" id="node-sc">
+      <div class="node-badge">1</div>
+      <div class="node-icon">🗄️</div>
+      <div class="node-label">StorageClass</div>
+      <div class="node-sub">定义存储类型<br>provisioner / policy</div>
+    </div>
+
+    <!-- Arrow 1 -->
+    <div class="arrow-wrap" id="arrow1">
+      <div class="arrow-tag">动态制备</div>
+      <div class="arrow-line"><div class="arrow-fill"></div></div>
+      <div class="arrow-head">▶</div>
+    </div>
+
+    <!-- PV -->
+    <div class="node pv" id="node-pv">
+      <div class="node-badge">2</div>
+      <div class="node-icon">💾</div>
+      <div class="node-label">PersistentVolume</div>
+      <div class="node-sub">集群存储资源<br>容量 / 访问模式</div>
+    </div>
+
+    <!-- Arrow 2 -->
+    <div class="arrow-wrap" id="arrow2">
+      <div class="arrow-tag">绑定 Bound</div>
+      <div class="arrow-line"><div class="arrow-fill"></div></div>
+      <div class="arrow-head">▶</div>
+    </div>
+
+    <!-- PVC -->
+    <div class="node pvc" id="node-pvc">
+      <div class="node-badge">3</div>
+      <div class="node-icon">📋</div>
+      <div class="node-label">PVC</div>
+      <div class="node-sub">用户存储声明<br>请求容量 / 模式</div>
+    </div>
+
+    <!-- Arrow 3 -->
+    <div class="arrow-wrap" id="arrow3">
+      <div class="arrow-tag">Volume 挂载</div>
+      <div class="arrow-line"><div class="arrow-fill"></div></div>
+      <div class="arrow-head">▶</div>
+    </div>
+
+    <!-- Pod -->
+    <div class="node pod" id="node-pod">
+      <div class="node-badge">4</div>
+      <div class="node-icon">🚀</div>
+      <div class="node-label">Pod</div>
+      <div class="node-sub">挂载 Volume<br>容器读写存储</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Info Panel -->
+<div class="info-panel">
+  <div class="info-step show" id="info-0">
+    <h3><span class="dot" style="background:var(--sc-color)"></span>等待开始...</h3>
+    <p>点击 <code>开始演示</code> 或 <code>自动播放</code> 查看 PV/PVC 完整绑定流程，也可手动点击 <code>上一步 / 下一步</code> 逐步查看。</p>
+  </div>
+  <div class="info-step" id="info-1">
+    <h3><span class="dot" style="background:var(--sc-color)"></span>Step 1 — StorageClass：定义存储模板</h3>
+    <p>管理员创建 <code>StorageClass</code>，声明存储 <code>provisioner</code>（如 NFS、Ceph、云盘），设置 <code>reclaimPolicy</code> 和参数。它是动态制备 PV 的"工厂蓝图"，无需提前手动创建 PV。</p>
+  </div>
+  <div class="info-step" id="info-2">
+    <h3><span class="dot" style="background:var(--pv-color)"></span>Step 2 — PersistentVolume：集群级存储资源</h3>
+    <p><code>PV</code> 代表实际的存储资源（NFS 路径、云磁盘 ID 等），可由管理员静态创建，也可由 StorageClass 动态制备。关键属性：<code>capacity</code>、<code>accessModes</code>（RWO/ROX/RWX）、<code>persistentVolumeReclaimPolicy</code>。</p>
+  </div>
+  <div class="info-step" id="info-3">
+    <h3><span class="dot" style="background:var(--pvc-color)"></span>Step 3 — PVC：用户存储声明</h3>
+    <p><code>PVC</code> 是命名空间级的存储请求，用户声明所需容量和访问模式，Kubernetes 控制器自动匹配合适 PV 并将其状态置为 <code>Bound</code>。若指定 <code>storageClassName</code>，则触发动态制备。</p>
+  </div>
+  <div class="info-step" id="info-4">
+    <h3><span class="dot" style="background:var(--pod-color)"></span>Step 4 — Pod 挂载：容器读写持久存储</h3>
+    <p>Pod spec 中声明 <code>volumes[].persistentVolumeClaim.claimName</code>，容器通过 <code>volumeMounts</code> 将 PVC 映射到指定路径。Pod 删除后数据依据 <code>reclaimPolicy</code> 决定保留或释放。</p>
+  </div>
+</div>
+
+<!-- Logic cards -->
+<div class="logic-section">
+  <div class="logic-card sc">
+    <h4>🗄️ StorageClass</h4>
+    <ul>
+      <li>provisioner 驱动</li>
+      <li>reclaimPolicy: Retain/Delete</li>
+      <li>volumeBindingMode</li>
+      <li>parameters（后端参数）</li>
+    </ul>
+  </div>
+  <div class="logic-card pv">
+    <h4>💾 PersistentVolume</h4>
+    <ul>
+      <li>集群级资源（无命名空间）</li>
+      <li>accessModes: RWO/ROX/RWX</li>
+      <li>capacity.storage</li>
+      <li>状态: Available → Bound → Released</li>
+    </ul>
+  </div>
+  <div class="logic-card pvc">
+    <h4>📋 PersistentVolumeClaim</h4>
+    <ul>
+      <li>命名空间级资源</li>
+      <li>storageClassName 触发动态制备</li>
+      <li>selector 精细匹配 PV</li>
+      <li>状态: Pending → Bound</li>
+    </ul>
+  </div>
+  <div class="logic-card pod">
+    <h4>🚀 Pod Volume 挂载</h4>
+    <ul>
+      <li>volumes[].persistentVolumeClaim</li>
+      <li>containers[].volumeMounts</li>
+      <li>subPath 子目录挂载</li>
+      <li>readOnly 只读模式</li>
+    </ul>
+  </div>
+</div>
+
+<footer>Kubernetes Storage — PV/PVC Binding Flow · DevOps Lab</footer>
+
+<script>
+  const STEPS = 4;
+  let current = 0;
+  let autoTimer = null;
+  let speed = 1400;
+
+  const nodes   = ['node-sc','node-pv','node-pvc','node-pod'];
+  const arrows  = ['arrow1','arrow2','arrow3'];
+  const infos   = Array.from({length: STEPS+1}, (_,i) => document.getElementById('info-'+i));
+  const progs   = Array.from({length: STEPS},  (_,i) => document.getElementById('prog'+i));
+
+  function setSpeed(v) {
+    speed = parseInt(v);
+    document.getElementById('speedLabel').textContent = (speed/1000).toFixed(1)+'s';
+  }
+
+  function applyState(step) {
+    // nodes
+    nodes.forEach((id, i) => {
+      document.getElementById(id).classList.toggle('active', i < step);
+    });
+    // arrows
+    arrows.forEach((id, i) => {
+      document.getElementById(id).classList.toggle('flowing', i < step - 1);
+    });
+    // info
+    infos.forEach((el, i) => el && el.classList.toggle('show', i === (step === 0 ? 0 : step)));
+    // progress
+    progs.forEach((el, i) => {
+      el.style.width = i < step ? '100%' : '0%';
+    });
+  }
+
+  function goTo(step) {
+    current = Math.max(0, Math.min(STEPS, step));
+    applyState(current);
+  }
+
+  function next() { if (current < STEPS) goTo(current + 1); }
+  function prev() { if (current > 0) goTo(current - 1); }
+
+  function startAuto() {
+    if (autoTimer) return;
+    document.getElementById('btnAuto').textContent = '⏸ 暂停';
+    autoTimer = setInterval(() => {
+      if (current >= STEPS) { stopAuto(); return; }
+      next();
+    }, speed);
+  }
+  function stopAuto() {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('btnAuto').textContent = '⏯ 自动播放';
+  }
+  function toggleAuto() { autoTimer ? stopAuto() : startAuto(); }
+
+  function reset() {
+    stopAuto();
+    goTo(0);
+  }
+
+  document.getElementById('btnPlay').addEventListener('click', () => { reset(); next(); });
+  document.getElementById('btnNext').addEventListener('click', next);
+  document.getElementById('btnPrev').addEventListener('click', prev);
+  document.getElementById('btnAuto').addEventListener('click', toggleAuto);
+  document.getElementById('btnReset').addEventListener('click', reset);
+  document.getElementById('speedSlider').addEventListener('input', function() {
+    setSpeed(this.value);
+    if (autoTimer) { stopAuto(); startAuto(); }
+  });
+
+  applyState(0);
+</script>
+</body>
+</html>
