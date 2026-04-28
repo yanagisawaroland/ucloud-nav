@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s NetworkPolicy 知识图谱</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;700;900&display=swap');
+
+:root {
+  --bg:         #eef2f7;
+  --surface:    #ffffff;
+  --surface2:   #f7fafd;
+  --border:     #cdd8e8;
+  --text:       #18263a;
+  --muted:      #5a7090;
+  --c-pod:      #2563eb;
+  --c-ns:       #0891b2;
+  --c-np:       #7c3aed;
+  --c-ingress:  #059669;
+  --c-egress:   #d97706;
+  --c-deny:     #dc2626;
+  --c-allow:    #16a34a;
+  --shadow:     0 4px 24px rgba(0,0,0,0.08);
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body {
+  background: var(--bg);
+  font-family: 'Noto Sans SC', sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  padding: 32px 16px 60px;
+}
+
+/* ── Header ── */
+header { text-align:center; margin-bottom:28px; }
+header h1 {
+  font-size: clamp(1.7rem,4vw,2.7rem);
+  font-weight:900;
+  letter-spacing:-1px;
+  line-height:1.15;
+}
+header h1 em { color:var(--c-np); font-style:normal; }
+header p {
+  margin-top:8px;
+  color:var(--muted);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.88rem;
+}
+
+/* ── Controls ── */
+.controls {
+  display:flex; flex-wrap:wrap;
+  justify-content:center; gap:10px;
+  margin-bottom:24px;
+}
+.btn {
+  padding:9px 20px;
+  border:2px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.82rem; font-weight:700;
+  cursor:pointer;
+  transition:all .18s;
+}
+.btn:hover { border-color:var(--c-np); color:var(--c-np); transform:translateY(-1px); }
+.btn.primary { background:var(--c-np); color:#fff; border-color:var(--c-np); }
+.btn.primary:hover { background:#6d28d9; border-color:#6d28d9; color:#fff; }
+.btn.danger  { border-color:var(--c-deny); color:var(--c-deny); }
+.btn.danger:hover { background:var(--c-deny); color:#fff; }
+
+.speed-row {
+  display:flex; align-items:center; gap:10px;
+  justify-content:center; margin-bottom:28px;
+  font-size:0.82rem; color:var(--muted);
+  font-family:'JetBrains Mono',monospace;
+}
+input[type=range]{ accent-color:var(--c-np); width:110px; }
+
+/* ── Progress dots ── */
+.prog-dots {
+  display:flex; justify-content:center; gap:10px;
+  margin-bottom:28px;
+}
+.pdot {
+  width:32px; height:6px;
+  border-radius:3px;
+  background:var(--border);
+  transition:background .4s;
+}
+.pdot.on { background:var(--c-np); }
+
+/* ══════════════════════════════
+   KNOWLEDGE GRAPH CANVAS
+══════════════════════════════ */
+.kg-wrap {
+  max-width:1160px; margin:0 auto;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:36px 24px 32px;
+  box-shadow: var(--shadow);
+  position:relative; overflow:hidden;
+}
+.kg-wrap::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:44px 44px;
+  opacity:.28;
+  pointer-events:none;
+}
+
+/* SVG arrows layer */
+.kg-svg {
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  pointer-events:none;
+  z-index:1;
+}
+
+/* Node grid */
+.kg-grid {
+  position:relative; z-index:2;
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  gap:20px 16px;
+  min-height:420px;
+  align-items:center;
+}
+
+/* ── Node box ── */
+.knode {
+  border:2.5px solid transparent;
+  border-radius:14px;
+  background:var(--surface);
+  padding:18px 14px 14px;
+  text-align:center;
+  position:relative;
+  transition: opacity .35s, transform .35s, box-shadow .35s;
+  opacity:.28;
+  transform:scale(.94);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.knode.vis {
+  opacity:1; transform:scale(1);
+}
+.knode .kicon  { font-size:2rem; line-height:1; margin-bottom:8px; }
+.knode .klabel {
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.78rem; font-weight:700;
+  letter-spacing:0.3px;
+}
+.knode .ksub   { font-size:0.68rem; color:var(--muted); margin-top:5px; line-height:1.55; }
+
+/* colour themes */
+.knode.t-pod  { border-color:var(--c-pod);    box-shadow:0 0 22px rgba(37,99,235,.15); }
+.knode.t-pod  .klabel { color:var(--c-pod); }
+.knode.t-ns   { border-color:var(--c-ns);     box-shadow:0 0 22px rgba(8,145,178,.15); }
+.knode.t-ns   .klabel { color:var(--c-ns); }
+.knode.t-np   { border-color:var(--c-np);     box-shadow:0 0 22px rgba(124,58,237,.18); }
+.knode.t-np   .klabel { color:var(--c-np); }
+.knode.t-in   { border-color:var(--c-ingress);box-shadow:0 0 22px rgba(5,150,105,.15); }
+.knode.t-in   .klabel { color:var(--c-ingress); }
+.knode.t-eg   { border-color:var(--c-egress); box-shadow:0 0 22px rgba(217,119,6,.15); }
+.knode.t-eg   .klabel { color:var(--c-egress); }
+.knode.t-allow{ border-color:var(--c-allow);  box-shadow:0 0 22px rgba(22,163,74,.15); }
+.knode.t-allow .klabel { color:var(--c-allow); }
+.knode.t-deny { border-color:var(--c-deny);   box-shadow:0 0 22px rgba(220,38,38,.15); }
+.knode.t-deny .klabel { color:var(--c-deny); }
+
+/* step badge */
+.kbadge {
+  position:absolute; top:-9px; right:-9px;
+  width:20px; height:20px;
+  border-radius:50%;
+  background:var(--c-np);
+  color:#fff;
+  font-size:0.6rem; font-weight:900;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; transition:opacity .3s .15s;
+}
+.knode.vis .kbadge { opacity:1; }
+
+/* span helpers */
+.span2 { grid-column: span 2; }
+.span4 { grid-column: span 4; }
+
+/* center col align */
+.col1 { grid-column:1; }
+.col2 { grid-column:2; }
+.col3 { grid-column:3; }
+.col4 { grid-column:4; }
+.row1 { grid-row:1; }
+.row2 { grid-row:2; }
+.row3 { grid-row:3; }
+
+/* ── Traffic demo strip ── */
+.traffic-strip {
+  max-width:1160px; margin:24px auto 0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:24px 28px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  position:relative;
+}
+.traffic-strip h3 {
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.85rem; font-weight:700;
+  color:var(--c-np); margin-bottom:16px;
+}
+.traffic-lanes {
+  display:flex; flex-direction:column; gap:14px;
+}
+.lane {
+  display:flex; align-items:center; gap:12px;
+}
+.lane-label {
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.72rem; color:var(--muted);
+  width:90px; flex-shrink:0; text-align:right;
+}
+.lane-track {
+  flex:1; height:28px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  position:relative; overflow:hidden;
+}
+.lane-pkt {
+  position:absolute; top:50%; left:-48px;
+  transform:translateY(-50%);
+  height:18px; border-radius:9px;
+  padding:0 10px;
+  font-size:0.65rem; font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  display:flex; align-items:center;
+  white-space:nowrap;
+  transition: left 0s;
+}
+.lane-pkt.allow-pkt { background:rgba(22,163,74,.15); color:var(--c-allow); border:1.5px solid var(--c-allow); }
+.lane-pkt.deny-pkt  { background:rgba(220,38,38,.12);  color:var(--c-deny);  border:1.5px solid var(--c-deny);  }
+.lane-result {
+  width:56px; flex-shrink:0;
+  font-size:0.75rem; font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  text-align:center;
+  opacity:0; transition:opacity .3s;
+}
+.lane-result.show { opacity:1; }
+.lane-result.ok  { color:var(--c-allow); }
+.lane-result.no  { color:var(--c-deny); }
+
+/* ── Info panel ── */
+.info-panel {
+  max-width:1160px; margin:20px auto 0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:22px 26px;
+  box-shadow:var(--shadow);
+  min-height:100px;
+}
+.istep { display:none; animation:fs .35s ease; }
+.istep.show { display:block; }
+@keyframes fs {
+  from{opacity:0;transform:translateY(6px)}
+  to  {opacity:1;transform:translateY(0)}
+}
+.istep h3 {
+  font-family:'JetBrains Mono',monospace;
+  font-size:.88rem; font-weight:700;
+  margin-bottom:9px;
+  display:flex; align-items:center; gap:9px;
+}
+.dot10 {
+  width:10px; height:10px;
+  border-radius:50%; display:inline-block; flex-shrink:0;
+}
+.istep p { font-size:.84rem; color:var(--muted); line-height:1.85; }
+.istep code {
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:4px; padding:1px 7px;
+  font-family:'JetBrains Mono',monospace; font-size:.76rem; color:var(--text);
+}
+
+/* ── Ref cards ── */
+.ref-grid {
+  max-width:1160px; margin:24px auto 0;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:14px;
+}
+.rcard {
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:18px;
+  border-left:4px solid transparent;
+  transition:transform .2s, box-shadow .2s;
+  box-shadow:0 1px 6px rgba(0,0,0,.04);
+}
+.rcard:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.08); }
+.rcard.t-pod   { border-left-color:var(--c-pod); }
+.rcard.t-np    { border-left-color:var(--c-np); }
+.rcard.t-in    { border-left-color:var(--c-ingress); }
+.rcard.t-eg    { border-left-color:var(--c-egress); }
+.rcard.t-deny  { border-left-color:var(--c-deny); }
+.rcard h4 {
+  font-family:'JetBrains Mono',monospace;
+  font-size:.78rem; font-weight:700; margin-bottom:8px;
+}
+.rcard.t-pod  h4 { color:var(--c-pod); }
+.rcard.t-np   h4 { color:var(--c-np); }
+.rcard.t-in   h4 { color:var(--c-ingress); }
+.rcard.t-eg   h4 { color:var(--c-egress); }
+.rcard.t-deny h4 { color:var(--c-deny); }
+.rcard ul { list-style:none; font-size:.75rem; color:var(--muted); line-height:2; }
+.rcard ul li::before { content:'▸ '; opacity:.45; }
+
+footer {
+  text-align:center; margin-top:40px;
+  font-size:.72rem; color:#b0bec5;
+  font-family:'JetBrains Mono',monospace;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>K8s <em>NetworkPolicy</em> 知识图谱</h1>
+  <p>Pod 选择 · Ingress/Egress 规则 · 流量放行与拦截 · 命名空间隔离</p>
+</header>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn primary" id="btnPlay">▶ 开始演示</button>
+  <button class="btn" id="btnPrev">◀ 上一步</button>
+  <button class="btn" id="btnNext">▶ 下一步</button>
+  <button class="btn" id="btnAuto">⏯ 自动播放</button>
+  <button class="btn danger" id="btnReset">↺ 重置</button>
+</div>
+<div class="speed-row">
+  速度: <input type="range" id="spd" min="600" max="3200" value="1600" step="100">
+  <span id="spdLabel">1.6s</span>
+</div>
+
+<!-- Progress dots -->
+<div class="prog-dots" id="progDots"></div>
+
+<!-- ══ Knowledge Graph ══ -->
+<div class="kg-wrap" id="kgWrap">
+  <!-- SVG connector layer drawn by JS -->
+  <svg class="kg-svg" id="kgSvg"></svg>
+
+  <div class="kg-grid">
+
+    <!-- Row 1: Namespace + NetworkPolicy core -->
+    <div class="knode t-ns row1 col1" id="n-ns" style="grid-column:1;grid-row:1">
+      <div class="kbadge">1</div>
+      <div class="kicon">🏷️</div>
+      <div class="klabel">Namespace</div>
+      <div class="ksub">命名空间隔离域<br>namespaceSelector</div>
+    </div>
+
+    <div class="knode t-np span2 row1" id="n-np" style="grid-column:2/4;grid-row:1">
+      <div class="kbadge">2</div>
+      <div class="kicon">🛡️</div>
+      <div class="klabel">NetworkPolicy</div>
+      <div class="ksub">作用于目标 Pod · podSelector<br>spec.ingress / spec.egress</div>
+    </div>
+
+    <div class="knode t-pod row1 col4" id="n-ipblock" style="grid-column:4;grid-row:1">
+      <div class="kbadge">3</div>
+      <div class="kicon">🌐</div>
+      <div class="klabel">ipBlock</div>
+      <div class="ksub">CIDR 外部 IP<br>except 排除子网</div>
+    </div>
+
+    <!-- Row 2: Ingress / Egress rules -->
+    <div class="knode t-in row2 col1" id="n-ing" style="grid-column:1;grid-row:2">
+      <div class="kbadge">4</div>
+      <div class="kicon">⬇️</div>
+      <div class="klabel">Ingress Rules</div>
+      <div class="ksub">入站流量<br>from + ports</div>
+    </div>
+
+    <div class="knode t-pod row2 col2" id="n-pod-sel" style="grid-column:2;grid-row:2">
+      <div class="kbadge">5</div>
+      <div class="kicon">🔵</div>
+      <div class="klabel">podSelector</div>
+      <div class="ksub">标签匹配目标 Pod<br>matchLabels</div>
+    </div>
+
+    <div class="knode t-ns row2 col3" id="n-ns-sel" style="grid-column:3;grid-row:2">
+      <div class="kbadge">6</div>
+      <div class="kicon">🏷️</div>
+      <div class="klabel">namespaceSelector</div>
+      <div class="ksub">跨命名空间<br>matchLabels</div>
+    </div>
+
+    <div class="knode t-eg row2 col4" id="n-egr" style="grid-column:4;grid-row:2">
+      <div class="kbadge">7</div>
+      <div class="kicon">⬆️</div>
+      <div class="klabel">Egress Rules</div>
+      <div class="ksub">出站流量<br>to + ports</div>
+    </div>
+
+    <!-- Row 3: Outcome -->
+    <div class="knode t-allow row3 col1" id="n-allow" style="grid-column:1;grid-row:3">
+      <div class="kbadge">8</div>
+      <div class="kicon">✅</div>
+      <div class="klabel">ALLOW</div>
+      <div class="ksub">规则命中<br>流量放行</div>
+    </div>
+
+    <div class="knode t-pod span2 row3" id="n-cni" style="grid-column:2/4;grid-row:3">
+      <div class="kbadge">9</div>
+      <div class="kicon">🔌</div>
+      <div class="klabel">CNI Plugin</div>
+      <div class="ksub">Calico / Cilium / Flannel<br>执行 iptables / eBPF 规则</div>
+    </div>
+
+    <div class="knode t-deny row3 col4" id="n-deny" style="grid-column:4;grid-row:3">
+      <div class="kbadge">10</div>
+      <div class="kicon">🚫</div>
+      <div class="klabel">DENY</div>
+      <div class="ksub">默认拒绝<br>无匹配规则</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Traffic simulation -->
+<div class="traffic-strip">
+  <h3>🚦 流量模拟演示</h3>
+  <div class="traffic-lanes">
+    <div class="lane">
+      <div class="lane-label">same-ns Pod</div>
+      <div class="lane-track">
+        <div class="lane-pkt allow-pkt" id="pkt0">TCP 8080 ▶</div>
+      </div>
+      <div class="lane-result ok" id="res0">✅ ALLOW</div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">other-ns Pod</div>
+      <div class="lane-track">
+        <div class="lane-pkt deny-pkt"  id="pkt1">TCP 8080 ▶</div>
+      </div>
+      <div class="lane-result no" id="res1">🚫 DENY</div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">ipBlock CIDR</div>
+      <div class="lane-track">
+        <div class="lane-pkt allow-pkt" id="pkt2">HTTPS 443 ▶</div>
+      </div>
+      <div class="lane-result ok" id="res2">✅ ALLOW</div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">Egress DNS</div>
+      <div class="lane-track">
+        <div class="lane-pkt allow-pkt" id="pkt3">UDP 53 ▶</div>
+      </div>
+      <div class="lane-result ok" id="res3">✅ ALLOW</div>
+    </div>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div class="info-panel">
+  <div class="istep show" id="i0">
+    <h3><span class="dot10" style="background:var(--c-np)"></span>准备就绪 — 点击开始</h3>
+    <p>本图谱展示 K8s <code>NetworkPolicy</code> 完整逻辑：命名空间隔离 → 策略绑定 Pod → Ingress/Egress 规则 → CNI 执行 → 流量放行或拒绝。</p>
+  </div>
+  <div class="istep" id="i1">
+    <h3><span class="dot10" style="background:var(--c-ns)"></span>Step 1 — Namespace：隔离边界</h3>
+    <p>Kubernetes 以 <code>Namespace</code> 划分逻辑隔离域。NetworkPolicy 默认在同一 Namespace 内生效；跨 Namespace 流量需通过 <code>namespaceSelector</code> 显式放行。</p>
+  </div>
+  <div class="istep" id="i2">
+    <h3><span class="dot10" style="background:var(--c-np)"></span>Step 2 — NetworkPolicy：策略核心</h3>
+    <p><code>NetworkPolicy</code> 资源通过 <code>spec.podSelector</code> 选中目标 Pod，一旦有任何 NetworkPolicy 选中某 Pod，该 Pod 即进入"默认拒绝"模式，所有未在规则中声明的流量均被 CNI 丢弃。</p>
+  </div>
+  <div class="istep" id="i3">
+    <h3><span class="dot10" style="background:var(--c-pod)"></span>Step 3 — ipBlock：外部 IP 段</h3>
+    <p><code>ipBlock.cidr</code> 允许指定外部 CIDR（如 <code>10.0.0.0/8</code>），配合 <code>except</code> 子字段排除特定子网，适用于放行外部负载均衡器或第三方服务的固定 IP 范围。</p>
+  </div>
+  <div class="istep" id="i4">
+    <h3><span class="dot10" style="background:var(--c-ingress)"></span>Step 4 — Ingress Rules：入站控制</h3>
+    <p><code>spec.ingress[].from</code> 支持三种来源：<code>podSelector</code>（同 NS Pod）、<code>namespaceSelector</code>（跨 NS）、<code>ipBlock</code>（外部 IP）。<code>ports</code> 字段限定协议和端口。多个 from 元素取 <strong>OR</strong>，同一元素内多字段取 <strong>AND</strong>。</p>
+  </div>
+  <div class="istep" id="i5">
+    <h3><span class="dot10" style="background:var(--c-pod)"></span>Step 5 — podSelector：精准选 Pod</h3>
+    <p><code>podSelector.matchLabels</code> 基于标签选择目标 Pod，空 <code>{}</code> 匹配 Namespace 下所有 Pod。同时可作为 <code>from/to</code> 中的来源/目标选择器，实现 Pod 级微隔离。</p>
+  </div>
+  <div class="istep" id="i6">
+    <h3><span class="dot10" style="background:var(--c-ns)"></span>Step 6 — namespaceSelector：跨 NS 放行</h3>
+    <p>将 <code>namespaceSelector</code> 与 <code>podSelector</code> 写在同一 <code>from</code> 元素下（AND 语义）可精确放行"指定 NS 中的指定 Pod"；分开写则为 OR 语义，注意区分。</p>
+  </div>
+  <div class="istep" id="i7">
+    <h3><span class="dot10" style="background:var(--c-egress)"></span>Step 7 — Egress Rules：出站控制</h3>
+    <p><code>spec.egress[].to</code> 控制 Pod 的出站目标，格式与 ingress from 对称。常见场景：放行 DNS（UDP/TCP 53）、放行数据库端口、限制 Pod 只能访问特定服务。</p>
+  </div>
+  <div class="istep" id="i8">
+    <h3><span class="dot10" style="background:var(--c-allow)"></span>Step 8 — ALLOW：规则命中放行</h3>
+    <p>当流量匹配 <code>ingress</code> 或 <code>egress</code> 规则时，CNI 插件将其标记为允许。NetworkPolicy 规则取 <strong>OR</strong> 联合：命中任意一条规则即放行，无需全部命中。</p>
+  </div>
+  <div class="istep" id="i9">
+    <h3><span class="dot10" style="background:var(--c-pod)"></span>Step 9 — CNI Plugin：执行者</h3>
+    <p>NetworkPolicy 本身只是 API 对象，真正执行的是 CNI 插件。<code>Calico</code> 用 iptables/eBPF，<code>Cilium</code> 纯 eBPF，<code>Flannel</code> 默认不支持 NetworkPolicy（需配合 Canal）。未安装支持 NetworkPolicy 的 CNI 时，策略无效。</p>
+  </div>
+  <div class="istep" id="i10">
+    <h3><span class="dot10" style="background:var(--c-deny)"></span>Step 10 — DENY：默认拒绝语义</h3>
+    <p>只要有 NetworkPolicy 选中某 Pod，该 Pod 所有未显式放行的方向流量均被丢弃。可用空规则 <code>spec.ingress:[]</code> 实现"全拒绝 Ingress"，<code>spec.egress:[]</code> 实现"全拒绝 Egress"。</p>
+  </div>
+</div>
+
+<!-- Ref cards -->
+<div class="ref-grid">
+  <div class="rcard t-pod">
+    <h4>🔵 podSelector 速查</h4>
+    <ul>
+      <li>空 {} = 所有 Pod</li>
+      <li>matchLabels: {app: web}</li>
+      <li>matchExpressions 支持 In/NotIn</li>
+      <li>policyTypes 声明 Ingress/Egress</li>
+    </ul>
+  </div>
+  <div class="rcard t-in">
+    <h4>⬇️ Ingress 要点</h4>
+    <ul>
+      <li>from[] 多元素 = OR</li>
+      <li>同元素多字段 = AND</li>
+      <li>ports.protocol: TCP/UDP/SCTP</li>
+      <li>ports.port: 数字或命名端口</li>
+    </ul>
+  </div>
+  <div class="rcard t-eg">
+    <h4>⬆️ Egress 要点</h4>
+    <ul>
+      <li>to[] 语义与 from[] 对称</li>
+      <li>务必放行 DNS UDP/TCP 53</li>
+      <li>放行 kube-apiserver 6443</li>
+      <li>ipBlock 控制外部出口</li>
+    </ul>
+  </div>
+  <div class="rcard t-np">
+    <h4>🛡️ 常见模式</h4>
+    <ul>
+      <li>默认拒绝所有 Ingress</li>
+      <li>默认拒绝所有 Egress</li>
+      <li>仅允许同 NS 通信</li>
+      <li>允许 monitoring NS 拉指标</li>
+    </ul>
+  </div>
+  <div class="rcard t-deny">
+    <h4>🚫 常见陷阱</h4>
+    <ul>
+      <li>CNI 不支持则策略无效</li>
+      <li>忘记放行 DNS 导致解析失败</li>
+      <li>AND/OR 语义混淆</li>
+      <li>漏写 policyTypes 导致单向生效</li>
+    </ul>
+  </div>
+</div>
+
+<footer>Kubernetes NetworkPolicy Knowledge Graph · DevOps Lab</footer>
+
+<script>
+const STEPS = 10;
+let cur = 0, timer = null, speed = 1600;
+
+const nodeIds = ['n-ns','n-np','n-ipblock','n-ing','n-pod-sel','n-ns-sel','n-egr','n-allow','n-cni','n-deny'];
+const infoIds = Array.from({length:STEPS+1},(_,i)=>document.getElementById('i'+i));
+
+// Progress dots
+const dotWrap = document.getElementById('progDots');
+nodeIds.forEach((_,i)=>{
+  const d = document.createElement('div');
+  d.className='pdot'; d.id='pd'+i;
+  dotWrap.appendChild(d);
+});
+
+function applyState(step){
+  nodeIds.forEach((id,i)=>{
+    document.getElementById(id).classList.toggle('vis', i < step);
+  });
+  infoIds.forEach((el,i)=> el && el.classList.toggle('show', i === (step===0?0:step)));
+  nodeIds.forEach((_,i)=>{
+    const d = document.getElementById('pd'+i);
+    if(d) d.classList.toggle('on', i < step);
+  });
+  // traffic animation on step 7+
+  if(step >= 7) runTraffic();
+}
+
+// Traffic packets
+function runTraffic(){
+  const pkts = [
+    {id:'pkt0', res:'res0', allow:true,  delay:0},
+    {id:'pkt1', res:'res1', allow:false, delay:300},
+    {id:'pkt2', res:'res2', allow:true,  delay:600},
+    {id:'pkt3', res:'res3', allow:true,  delay:900},
+  ];
+  pkts.forEach(p=>{
+    const el = document.getElementById(p.id);
+    const re = document.getElementById(p.res);
+    el.style.transition='none';
+    el.style.left='-48px';
+    re.classList.remove('show');
+    setTimeout(()=>{
+      el.style.transition='left 1.2s cubic-bezier(.4,0,.2,1)';
+      el.style.left = p.allow ? 'calc(100% - 10px)' : '52%';
+      setTimeout(()=>re.classList.add('show'), 1000);
+    }, p.delay + 80);
+  });
+}
+
+function goTo(s){
+  cur = Math.max(0,Math.min(STEPS,s));
+  applyState(cur);
+}
+function next(){ if(cur<STEPS) goTo(cur+1); }
+function prev(){ if(cur>0) goTo(cur-1); }
+function startAuto(){
+  if(timer) return;
+  document.getElementById('btnAuto').textContent='⏸ 暂停';
+  timer = setInterval(()=>{ if(cur>=STEPS){stopAuto();return;} next(); }, speed);
+}
+function stopAuto(){
+  clearInterval(timer); timer=null;
+  document.getElementById('btnAuto').textContent='⏯ 自动播放';
+}
+function reset(){ stopAuto(); goTo(0); }
+
+document.getElementById('btnPlay').onclick = ()=>{ reset(); next(); };
+document.getElementById('btnNext').onclick = next;
+document.getElementById('btnPrev').onclick = prev;
+document.getElementById('btnAuto').onclick  = ()=> timer ? stopAuto() : startAuto();
+document.getElementById('btnReset').onclick = reset;
+document.getElementById('spd').oninput = function(){
+  speed = parseInt(this.value);
+  document.getElementById('spdLabel').textContent=(speed/1000).toFixed(1)+'s';
+  if(timer){stopAuto();startAuto();}
+};
+
+applyState(0);
+</script>
+</body>
+</html>
