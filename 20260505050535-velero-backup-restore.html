@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Velero 备份恢复动态图（含概念说明）</title>
+<style>
+:root {
+  --bg:#f5f7fb;
+  --card:#ffffff;
+  --border:#e2e8f0;
+  --text:#111827;
+  --muted:#6b7280;
+  --accent:#4f46e5;
+  --backup:#16a34a;
+  --restore:#0891b2;
+  --danger:#ea580c;
+  --speed:1.0s;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  background:var(--bg);
+  color:var(--text);
+}
+.page{
+  max-width:1200px;
+  margin:32px auto 48px;
+  padding:0 16px;
+}
+h1{
+  text-align:center;
+  font-size:28px;
+  margin:0 0 8px;
+}
+.subtitle{
+  text-align:center;
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:20px;
+}
+.controls{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:10px;
+  margin-bottom:16px;
+}
+.btn{
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:#fff;
+  padding:6px 14px;
+  font-size:13px;
+  cursor:pointer;
+}
+.btn.primary{border-color:var(--accent);color:var(--accent);}
+.btn:disabled{opacity:.4;cursor:default;}
+.speed-control{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:var(--muted);
+}
+.speed-control input[type=range]{width:140px;}
+
+.layout{
+  display:grid;
+  grid-template-columns:1.1fr 1.4fr 1.1fr;
+  gap:16px;
+  align-items:stretch;
+}
+.card{
+  background:var(--card);
+  border-radius:14px;
+  border:1px solid var(--border);
+  padding:12px 14px;
+  box-shadow:0 8px 24px rgba(15,23,42,0.06);
+}
+.card-title{
+  font-size:15px;
+  font-weight:600;
+  margin-bottom:4px;
+}
+.card-sub{
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.pill{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  margin:2px 4px 2px 0;
+}
+.pill.backup{background:rgba(22,163,74,.12);color:var(--backup);}
+.pill.restore{background:rgba(8,145,178,.12);color:var(--restore);}
+.pill.meta{background:#e5e7eb;color:#374151;}
+.pill.warn{background:rgba(234,88,12,.12);color:var(--danger);}
+
+.diagram-wrap{
+  margin-top:18px;
+  background:#f9fafb;
+  border-radius:16px;
+  border:1px solid var(--border);
+  padding:12px;
+}
+.diagram-svg{width:100%;height:auto;}
+
+.node{
+  fill:#ffffff;
+  stroke:#cbd5e1;
+  stroke-width:1;
+  rx:8;
+}
+.node-label{font-size:11px;fill:#111827;}
+.node-sub{font-size:9px;fill:#6b7280;}
+
+.arrow{
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-dasharray:80;
+  stroke-dashoffset:80;
+  opacity:.18;
+}
+.arrow.backup{stroke:var(--backup);}
+.arrow.restore{stroke:var(--restore);}
+.arrow.danger{stroke:var(--danger);}
+.arrow.active{
+  opacity:1;
+  animation:dash var(--speed) linear forwards;
+}
+@keyframes dash{
+  from{stroke-dashoffset:80;}
+  to{stroke-dashoffset:0;}
+}
+
+.steps-panel{
+  margin-top:18px;
+  background:#ffffff;
+  border-radius:14px;
+  border:1px solid var(--border);
+  padding:10px 14px 12px;
+}
+.step-title{font-size:13px;font-weight:600;margin-bottom:4px;}
+.step-desc{font-size:12px;color:var(--muted);}
+.step-list{margin-top:8px;font-size:11px;color:var(--muted);}
+.step-list span.current{color:var(--accent);font-weight:600;}
+
+.concept{
+  margin-top:22px;
+  background:#ffffff;
+  border-radius:14px;
+  border:1px solid var(--border);
+  padding:12px 14px 14px;
+}
+.concept h2{
+  font-size:16px;
+  margin:0 0 6px;
+}
+.concept h3{
+  font-size:13px;
+  margin:10px 0 4px;
+}
+.concept p{
+  font-size:12px;
+  color:var(--muted);
+  margin:2px 0;
+}
+.concept code{
+  font-size:11px;
+  background:#f3f4f6;
+  padding:1px 4px;
+  border-radius:4px;
+}
+@media(max-width:960px){
+  .layout{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Velero 备份恢复 11 步动态图</h1>
+  <div class="subtitle">从“备份什么、怎么备份”到“如何跨集群恢复”的完整可视化流程</div>
+
+  <div class="controls">
+    <button id="btn-prev" class="btn">上一步</button>
+    <button id="btn-next" class="btn primary">下一步</button>
+    <button id="btn-reset" class="btn">重置</button>
+    <div class="speed-control">
+      <span>速度：</span>
+      <input id="speed-range" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+      <span id="speed-label">1.0x</span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">Kubernetes 集群</div>
+      <div class="card-sub">待备份的业务集群（源集群）</div>
+      <span class="pill.meta">Deployment / Service / Ingress / CRD / CR</span>
+      <span class="pill.meta">Namespace / RBAC / ConfigMap / Secret</span>
+      <span class="pill.warn">不包含节点 / 镜像 / 外部资源</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Velero 控制面</div>
+      <div class="card-sub">负责备份 / 恢复 / 调度 / 卷快照</div>
+      <span class="pill.backup">Backup 对象（资源 + PV）</span>
+      <span class="pill.restore">Restore 对象（按需恢复）</span>
+      <span class="pill.meta">支持 CSI Snapshot / Restic</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">对象存储 & 目标集群</div>
+      <div class="card-sub">S3 / OSS / COS + 恢复目标集群</div>
+      <span class="pill.backup">S3 / OSS / COS 作为备份仓库</span>
+      <span class="pill.restore">原集群恢复 / 跨集群迁移</span>
+      <span class="pill.meta">支持多环境 / 多 Region</span>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg class="diagram-svg" viewBox="0 0 900 260" preserveAspectRatio="xMidYMid meet">
+      <!-- 左：源集群 -->
+      <rect class="node" x="40" y="40" width="200" height="70" />
+      <text class="node-label" x="52" y="62">源 Kubernetes 集群</text>
+      <text class="node-sub" x="52" y="80">业务命名空间 + 资源 + PV</text>
+
+      <!-- 中：Velero -->
+      <rect class="node" x="350" y="30" width="200" height="60" />
+      <text class="node-label" x="362" y="52">Velero Server</text>
+      <text class="node-sub" x="362" y="70">Backup / Restore 控制器</text>
+
+      <rect class="node" x="350" y="110" width="200" height="60" />
+      <text class="node-label" x="362" y="132">Volume Snapshot / Restic</text>
+      <text class="node-sub" x="362" y="150">PV 数据备份</text>
+
+      <!-- 右：对象存储 + 目标集群 -->
+      <rect class="node" x="660" y="30" width="200" height="60" />
+      <text class="node-label" x="672" y="52">对象存储（S3 / OSS / COS）</text>
+      <text class="node-sub" x="672" y="70">存放 Backup 包</text>
+
+      <rect class="node" x="660" y="130" width="200" height="70" />
+      <text class="node-label" x="672" y="152">目标 Kubernetes 集群</text>
+      <text class="node-sub" x="672" y="170">原集群恢复 / 跨集群迁移</text>
+
+      <!-- 灾难节点 -->
+      <rect class="node" x="40" y="150" width="200" height="50" />
+      <text class="node-label" x="52" y="172">灾难 / 集群故障</text>
+      <text class="node-sub" x="52" y="188">需要从备份恢复</text>
+
+      <!-- 备份路径：源集群 -> Velero -> 对象存储 -->
+      <path id="path-b1" class="arrow backup" data-steps="1,2,3,4,5"
+            d="M240 70 C 280 70 320 60 350 60" />
+      <path id="path-b2" class="arrow backup" data-steps="2,3,4"
+            d="M450 90 C 500 90 560 70 660 60" />
+      <path id="path-b3" class="arrow backup" data-steps="3,4"
+            d="M450 140 C 500 140 560 80 660 60" />
+
+      <!-- 灾难路径：源集群 -> 灾难 -->
+      <path id="path-d1" class="arrow danger" data-steps="6"
+            d="M140 110 C 140 130 140 150 140 150" />
+
+      <!-- 恢复路径：对象存储 -> Velero -> 目标集群 -->
+      <path id="path-r1" class="arrow restore" data-steps="7,8,9,10,11"
+            d="M760 60 C 720 60 640 60 550 60" />
+      <path id="path-r2" class="arrow restore" data-steps="8,9,10,11"
+            d="M450 60 C 420 60 400 90 400 120" />
+      <path id="path-r3" class="arrow restore" data-steps="9,10,11"
+            d="M450 140 C 520 160 600 170 660 170" />
+
+      <!-- 动画点 -->
+      <circle id="dot-b" r="4" fill="var(--backup)" opacity="0">
+        <animateMotion id="anim-b" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+      <circle id="dot-r" r="4" fill="var(--restore)" opacity="0">
+        <animateMotion id="anim-r" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+      <circle id="dot-d" r="4" fill="var(--danger)" opacity="0">
+        <animateMotion id="anim-d" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+    </svg>
+  </div>
+
+  <div class="steps-panel">
+    <div class="step-title">当前步骤：<span id="step-index">1 / 11</span></div>
+    <div class="step-desc" id="step-text"></div>
+    <div class="step-list" id="step-list"></div>
+  </div>
+
+  <div class="concept">
+    <h2>Velero 核心概念与实战要点</h2>
+
+    <h3>1. Velero 是什么？</h3>
+    <p>Velero = Kubernetes 的“集群级备份 + 卷快照 + 灾难恢复”工具。</p>
+    <p>它备份：Deployment / Service / Ingress / CRD / CR / Namespace / RBAC / PV 数据。</p>
+    <p>它不备份：节点本身、容器镜像、非 K8s 管理的外部资源。</p>
+
+    <h3>2. 备份原理</h3>
+    <p>资源备份：将 K8s 资源导出为 JSON/YAML 存入对象存储。</p>
+    <p>卷备份：通过 CSI Snapshot 或 Restic 备份 PV 数据。</p>
+
+    <h3>3. 常用备份命令</h3>
+    <p><code>velero backup create full-backup --include-namespaces '*'</code></p>
+    <p><code>velero backup create ns-dev --include-namespaces dev</code></p>
+    <p><code>velero backup create app-nginx --selector app=nginx --default-volumes-to-restic</code></p>
+
+    <h3>4. 常用恢复命令</h3>
+    <p><code>velero restore create --from-backup full-backup</code></p>
+    <p><code>velero restore create restore-dev --from-backup ns-dev --namespace-mappings dev:dev2</code></p>
+    <p><code>velero restore create restore-cross --from-backup full-backup</code>（跨集群恢复）</p>
+
+    <h3>5. 常见坑与建议</h3>
+    <p>CRD 恢复顺序：先恢复 CRD，再恢复 CR。</p>
+    <p>StorageClass 不一致时：可使用 <code>--restore-volumes=false</code>，再手动处理 PV。</p>
+    <p>建议使用 CSI Snapshot 替代 Restic 作为生产环境卷备份方案。</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const steps = [
+    {id:1,type:'backup',text:'步骤 1：在源 Kubernetes 集群中部署 Velero，并配置对象存储（S3 / OSS / COS）。'},
+    {id:2,type:'backup',text:'步骤 2：Velero 通过 Backup 对象选择要备份的命名空间 / 资源 / Label。'},
+    {id:3,type:'backup',text:'步骤 3：Velero 导出 K8s 资源（YAML/JSON），写入对象存储中的 Backup 包。'},
+    {id:4,type:'backup',text:'步骤 4：通过 CSI Snapshot 或 Restic 对 PV 数据进行备份。'},
+    {id:5,type:'backup',text:'步骤 5：完成一次可用于灾难恢复 / 跨集群迁移的完整备份。'},
+    {id:6,type:'danger',text:'步骤 6：源集群发生灾难（节点故障 / 集群不可用 / 误删资源）。'},
+    {id:7,type:'restore',text:'步骤 7：在目标集群中安装 Velero，并指向同一个对象存储。'},
+    {id:8,type:'restore',text:'步骤 8：创建 Restore 对象，从指定 Backup 中恢复资源定义。'},
+    {id:9,type:'restore',text:'步骤 9：恢复 PV（通过 Snapshot 或 Restic），重新挂载数据卷。'},
+    {id:10,type:'restore',text:'步骤 10：目标集群中的应用重新启动，加载原有配置与数据。'},
+    {id:11,type:'restore',text:'步骤 11：完成灾难恢复 / 跨集群迁移，可定期演练验证可用性。'}
+  ];
+
+  const stepText = document.getElementById('step-text');
+  const stepIndex = document.getElementById('step-index');
+  const stepList = document.getElementById('step-list');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const btnReset = document.getElementById('btn-reset');
+  const speedRange = document.getElementById('speed-range');
+  const speedLabel = document.getElementById('speed-label');
+
+  const arrows = Array.from(document.querySelectorAll('.arrow'));
+  const dotB = document.getElementById('dot-b');
+  const dotR = document.getElementById('dot-r');
+  const dotD = document.getElementById('dot-d');
+  const animB = document.getElementById('anim-b');
+  const animR = document.getElementById('anim-r');
+  const animD = document.getElementById('anim-d');
+
+  let current = 1;
+
+  function updateSpeed(){
+    const v = parseFloat(speedRange.value);
+    speedLabel.textContent = v.toFixed(1) + 'x';
+    const base = 1.0 / v;
+    document.documentElement.style.setProperty('--speed', base.toFixed(2) + 's');
+    animB.setAttribute('dur', base.toFixed(2) + 's');
+    animR.setAttribute('dur', base.toFixed(2) + 's');
+    animD.setAttribute('dur', base.toFixed(2) + 's');
+  }
+
+  function resetDots(){
+    dotB.setAttribute('opacity','0');
+    dotR.setAttribute('opacity','0');
+    dotD.setAttribute('opacity','0');
+    animB.removeAttribute('path');
+    animR.removeAttribute('path');
+    animD.removeAttribute('path');
+  }
+
+  function playArrowForStep(step){
+    resetDots();
+    const sid = step.id;
+    const related = arrows.filter(a=>{
+      const s = (a.getAttribute('data-steps')||'').split(',');
+      return s.includes(String(sid));
+    });
+    related.forEach(a=>{
+      a.classList.remove('active');
+      void a.offsetWidth;
+      a.classList.add('active');
+    });
+
+    if(step.type==='backup'){
+      const path = related[related.length-1];
+      if(path){
+        const id = path.getAttribute('id');
+        animB.setAttribute('path','M0 0');
+        void animB.beginElement;
+        animB.setAttribute('xlink:href','#'+id);
+        animB.setAttribute('href','#'+id);
+        dotB.setAttribute('opacity','1');
+        animB.beginElement();
+      }
+    }else if(step.type==='restore'){
+      const path = related[related.length-1];
+      if(path){
+        const id = path.getAttribute('id');
+        animR.setAttribute('path','M0 0');
+        void animR.beginElement;
+        animR.setAttribute('xlink:href','#'+id);
+        animR.setAttribute('href','#'+id);
+        dotR.setAttribute('opacity','1');
+        animR.beginElement();
+      }
+    }else if(step.type==='danger'){
+      const path = related[related.length-1];
+      if(path){
+        const id = path.getAttribute('id');
+        animD.setAttribute('path','M0 0');
+        void animD.beginElement;
+        animD.setAttribute('xlink:href','#'+id);
+        animD.setAttribute('href','#'+id);
+        dotD.setAttribute('opacity','1');
+        animD.beginElement();
+      }
+    }
+  }
+
+  function renderStep(){
+    const step = steps[current-1];
+    stepIndex.textContent = current + ' / ' + steps.length;
+    stepText.textContent = step.text;
+
+    const parts = steps.map(s=>{
+      if(s.id===step.id){
+        return '<span class="current">['+s.id+'] '+(s.type==='backup'?'BACKUP':s.type==='restore'?'RESTORE':'DISASTER')+'</span>';
+      }
+      return '['+s.id+'] '+(s.type==='backup'?'BACKUP':s.type==='restore'?'RESTORE':'DISASTER');
+    });
+    stepList.innerHTML = parts.join(' · ');
+
+    btnPrev.disabled = current===1;
+    btnNext.disabled = current===steps.length;
+
+    arrows.forEach(a=>a.classList.remove('active'));
+    playArrowForStep(step);
+  }
+
+  btnPrev.addEventListener('click',()=>{
+    if(current>1){current--;renderStep();}
+  });
+  btnNext.addEventListener('click',()=>{
+    if(current<steps.length){current++;renderStep();}
+  });
+  btnReset.addEventListener('click',()=>{
+    current=1;renderStep();
+  });
+  speedRange.addEventListener('input',updateSpeed);
+
+  updateSpeed();
+  renderStep();
+})();
+</script>
+</body>
+</html>

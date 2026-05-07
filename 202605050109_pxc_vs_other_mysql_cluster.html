@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Percona XtraDB Cluster 与其他 MySQL 集群逻辑关系及流程动态图</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f5f7fb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      text-align: center;
+    }
+    h1 {
+      font-size: 32px;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .btn-group {
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      margin: 0 8px;
+      border-radius: 4px;
+      border: 1px solid #4a90e2;
+      background: #ffffff;
+      color: #4a90e2;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+    .btn.active,
+    .btn:hover {
+      background: #4a90e2;
+      color: #ffffff;
+    }
+    .diagram-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 40px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .panel {
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      padding: 20px 30px;
+      min-width: 320px;
+    }
+    .panel-title {
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: #222;
+    }
+    .node {
+      display: inline-block;
+      padding: 10px 16px;
+      margin: 8px;
+      border-radius: 20px;
+      background: #e3f2fd;
+      color: #1565c0;
+      font-weight: 600;
+      position: relative;
+    }
+    .node.core {
+      background: #fff3e0;
+      color: #ef6c00;
+    }
+    .node.client {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .arrow {
+      font-size: 18px;
+      margin: 0 6px;
+      color: #999;
+    }
+    .flow {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #555;
+      line-height: 1.6;
+    }
+    .hidden {
+      display: none;
+    }
+    .legend {
+      margin-top: 20px;
+      font-size: 13px;
+      color: #666;
+    }
+    .legend span {
+      display: inline-block;
+      margin: 0 10px;
+    }
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .dot-pxc { background: #ef6c00; }
+    .dot-node { background: #1565c0; }
+    .dot-client { background: #2e7d32; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Percona XtraDB Cluster 与其他 MySQL 集群逻辑关系及流程动态图</h1>
+
+    <div class="btn-group">
+      <button class="btn active" data-target="pxc">Percona XtraDB Cluster</button>
+      <button class="btn" data-target="classic">传统主从 / 其他 MySQL 集群</button>
+      <button class="btn" data-target="compare">对比视图</button>
+    </div>
+
+    <div id="pxc" class="diagram-wrapper">
+      <div class="panel">
+        <div class="panel-title">Percona XtraDB Cluster（PXC）</div>
+        <div>
+          <span class="node client">应用 / 客户端</span>
+          <span class="arrow">⇄</span>
+          <span class="node core">任意 PXC 节点</span>
+        </div>
+        <div class="flow">
+          1. 应用可以连接到任意一个 PXC 节点进行读写。<br>
+          2. 写入通过 Galera 协议在所有节点间同步复制（同步复制 / 组复制）。<br>
+          3. 所有节点数据保持强一致，任一节点故障时，其他节点仍可提供服务。<br>
+          4. 通常配合负载均衡（如 HAProxy / ProxySQL）实现高可用与流量分发。
+        </div>
+      </div>
+    </div>
+
+    <div id="classic" class="diagram-wrapper hidden">
+      <div class="panel">
+        <div class="panel-title">传统主从 / 其他 MySQL 集群</div>
+        <div>
+          <span class="node client">应用 / 客户端</span>
+          <span class="arrow">⇄</span>
+          <span class="node core">主库（Primary）</span>
+        </div>
+        <div>
+          <span class="node">从库 1</span>
+          <span class="arrow">←</span>
+          <span class="node">复制日志</span>
+          <span class="arrow">→</span>
+          <span class="node">从库 2</span>
+        </div>
+        <div class="flow">
+          1. 所有写入集中到主库，主库将 binlog 异步复制到从库。<br>
+          2. 从库通常只提供读服务，存在复制延迟，读写可能短暂不一致。<br>
+          3. 主库故障时，需要手动或借助工具进行主从切换，存在故障窗口。<br>
+          4. 适合读多写少、对强一致性要求不那么极端的场景。
+        </div>
+      </div>
+    </div>
+
+    <div id="compare" class="diagram-wrapper hidden">
+      <div class="panel">
+        <div class="panel-title">对比视图</div>
+        <div class="flow">
+          <strong>PXC：</strong>多主写入、同步复制、强一致、高可用，适合对一致性要求高的核心业务。<br>
+          <strong>传统集群：</strong>单主多从、异步复制、可能存在延迟，架构相对简单，适合读多写少场景。<br>
+          <strong>共同点：</strong>都通过多节点提升可用性与扩展能力，但在一致性、复杂度和运维方式上有明显差异。
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="dot dot-client"></span>应用 / 客户端</span>
+      <span><span class="dot dot-pxc"></span>PXC / 主节点</span>
+      <span><span class="dot dot-node"></span>普通节点 / 从库</span>
+    </div>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.btn');
+    const views = document.querySelectorAll('.diagram-wrapper');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const target = btn.getAttribute('data-target');
+        views.forEach(v => {
+          if (v.id === target) {
+            v.classList.remove('hidden');
+          } else {
+            v.classList.add('hidden');
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Percona XtraDB Cluster 与 MySQL 全生态集群架构图</title>
+<style>
+*{box-sizing:border-box}
+body{
+    margin:0;
+    font-family:"Microsoft YaHei",Arial,sans-serif;
+    background:linear-gradient(135deg,#eef7ff,#f9fcff);
+    color:#1f2d3d;
+    text-align:center;
+}
+header{
+    padding:30px;
+    background:#dceeff;
+    box-shadow:0 2px 10px rgba(0,0,0,.08);
+}
+h1{font-size:42px;margin:0}
+h2{font-size:20px;color:#4b6584;font-weight:normal}
+.controls{
+    margin:20px auto;
+}
+button{
+    padding:14px 26px;
+    margin:8px;
+    font-size:17px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    background:#4da6ff;
+    color:white;
+    transition:.3s;
+}
+button:hover{
+    background:#1e90ff;
+    transform:scale(1.05);
+}
+.info-panel{
+    width:92%;
+    margin:20px auto;
+    background:white;
+    border-radius:15px;
+    padding:25px;
+    box-shadow:0 4px 14px rgba(0,0,0,.08);
+    text-align:left;
+    line-height:2;
+    font-size:17px;
+}
+svg{
+    width:98%;
+    height:1350px;
+    background:white;
+    border-radius:15px;
+    border:1px solid #d6e4f0;
+    box-shadow:0 4px 14px rgba(0,0,0,.08);
+}
+.node{
+    fill:#d9ecff;
+    stroke:#4da6ff;
+    stroke-width:2;
+    rx:14;
+    ry:14;
+}
+.node:hover{
+    fill:#b8dcff;
+}
+.text{
+    font-size:20px;
+    font-weight:bold;
+    fill:#1f2d3d;
+}
+.subtext{
+    font-size:14px;
+    fill:#4b6584;
+}
+.line{
+    stroke:#7f8c8d;
+    stroke-width:3;
+    marker-end:url(#arrow);
+    transition:.5s;
+}
+.highlight{
+    stroke:#ff6600 !important;
+    stroke-width:6 !important;
+}
+footer{
+    padding:35px;
+    color:#666;
+    font-size:16px;
+}
+@media(max-width:768px){
+    h1{font-size:28px}
+    .info-panel{font-size:15px}
+    button{width:90%;margin:8px auto;display:block}
+}
+</style>
+</head>
+<body>
+
+<header>
+<h1>Percona XtraDB Cluster 与 MySQL 集群全生态逻辑关系图</h1>
+<h2>PXC / Galera / MGR / 主从 / Proxy / VIP / 监控 / 备份 / 容灾</h2>
+</header>
+
+<div class="controls">
+<button onclick="animateFlow()">▶ 全流程演示</button>
+<button onclick="resetFlow()">⟳ 重置</button>
+<button onclick="showPXC()">PXC专用架构</button>
+<button onclick="showTraditional()">传统主从架构</button>
+<button onclick="showDisaster()">容灾架构</button>
+</div>
+
+<div class="info-panel">
+<strong>架构核心说明：</strong><br>
+① Percona XtraDB Cluster 基于 Galera，同步复制，多主强一致。<br>
+② MGR 为官方 Group Replication，可灵活部署。<br>
+③ Master-Slave 为传统异步/半同步复制，适合读写分离。<br>
+④ ProxySQL / HAProxy 提供连接池、健康检查、故障切换。<br>
+⑤ Keepalived / VIP 提供统一接入。<br>
+⑥ PMM/Grafana/Zabbix 实现性能监控。<br>
+⑦ XtraBackup/Binlog/对象存储实现完整备份恢复。<br>
+⑧ 异地灾备保障业务连续性。<br>
+</div>
+
+<svg viewBox="0 0 2200 1350">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
+<path d="M0,0 L0,8 L12,4 z" fill="#7f8c8d"></path>
+</marker>
+</defs>
+
+<!-- 核心 -->
+<rect class="node" x="100" y="550" width="320" height="100"/>
+<text class="text" x="260" y="600" text-anchor="middle">Percona XtraDB Cluster</text>
+<text class="subtext" x="260" y="635" text-anchor="middle">多主 / 强一致 / 同步复制</text>
+
+<!-- Galera -->
+<rect class="node" x="550" y="250" width="300" height="100"/>
+<text class="text" x="700" y="300" text-anchor="middle">Galera Cluster</text>
+<text class="subtext" x="700" y="335" text-anchor="middle">wsrep 同步层</text>
+
+<!-- MGR -->
+<rect class="node" x="550" y="550" width="300" height="100"/>
+<text class="text" x="700" y="600" text-anchor="middle">MySQL Group Replication</text>
+<text class="subtext" x="700" y="635" text-anchor="middle">官方组复制</text>
+
+<!-- 主从 -->
+<rect class="node" x="550" y="850" width="300" height="100"/>
+<text class="text" x="700" y="900" text-anchor="middle">Master-Slave Replication</text>
+<text class="subtext" x="700" y="935" text-anchor="middle">异步/半同步</text>
+
+<!-- Proxy -->
+<rect class="node" x="1050" y="550" width="300" height="100"/>
+<text class="text" x="1200" y="600" text-anchor="middle">ProxySQL / HAProxy</text>
+<text class="subtext" x="1200" y="635" text-anchor="middle">读写分离 / 健康检查</text>
+
+<!-- VIP -->
+<rect class="node" x="1500" y="550" width="250" height="100"/>
+<text class="text" x="1625" y="600" text-anchor="middle">Keepalived / VIP</text>
+<text class="subtext" x="1625" y="635" text-anchor="middle">统一访问入口</text>
+
+<!-- App -->
+<rect class="node" x="1870" y="550" width="220" height="100"/>
+<text class="text" x="1980" y="600" text-anchor="middle">业务系统</text>
+<text class="subtext" x="1980" y="635" text-anchor="middle">WEB/API/ERP</text>
+
+<!-- Monitor -->
+<rect class="node" x="1050" y="180" width="300" height="100"/>
+<text class="text" x="1200" y="230" text-anchor="middle">监控平台</text>
+<text class="subtext" x="1200" y="265" text-anchor="middle">PMM / Grafana / Zabbix</text>
+
+<!-- Backup -->
+<rect class="node" x="1050" y="930" width="300" height="100"/>
+<text class="text" x="1200" y="980" text-anchor="middle">备份系统</text>
+<text class="subtext" x="1200" y="1015" text-anchor="middle">XtraBackup / Binlog</text>
+
+<!-- Disaster -->
+<rect class="node" x="1500" y="930" width="250" height="100"/>
+<text class="text" x="1625" y="980" text-anchor="middle">异地灾备中心</text>
+<text class="subtext" x="1625" y="1015" text-anchor="middle">跨区域容灾</text>
+
+<!-- 对象存储 -->
+<rect class="node" x="1870" y="930" width="220" height="100"/>
+<text class="text" x="1980" y="980" text-anchor="middle">对象存储</text>
+<text class="subtext" x="1980" y="1015" text-anchor="middle">长期归档</text>
+
+<!-- Lines -->
+<line id="l1" class="line" x1="420" y1="600" x2="550" y2="300"/>
+<line id="l2" class="line" x1="420" y1="600" x2="550" y2="600"/>
+<line id="l3" class="line" x1="420" y1="600" x2="550" y2="900"/>
+
+<line id="l4" class="line" x1="850" y1="300" x2="1050" y2="600"/>
+<line id="l5" class="line" x1="850" y1="600" x2="1050" y2="600"/>
+<line id="l6" class="line" x1="850" y1="900" x2="1050" y2="600"/>
+
+<line id="l7" class="line" x1="1350" y1="600" x2="1500" y2="600"/>
+<line id="l8" class="line" x1="1750" y1="600" x2="1870" y2="600"/>
+
+<line id="l9" class="line" x1="1200" y1="280" x2="1200" y2="550"/>
+<line id="l10" class="line" x1="1200" y1="650" x2="1200" y2="930"/>
+
+<line id="l11" class="line" x1="1350" y1="980" x2="1500" y2="980"/>
+<line id="l12" class="line" x1="1750" y1="980" x2="1870" y2="980"/>
+
+</svg>
+
+<script>
+const lines=['l1','l2','l3','l4','l5','l6','l7','l8','l9','l10','l11','l12'];
+
+function resetFlow(){
+    lines.forEach(id=>{
+        document.getElementById(id).classList.remove('highlight');
+    });
+}
+
+function animateFlow(){
+    resetFlow();
+    lines.forEach((id,index)=>{
+        setTimeout(()=>{
+            document.getElementById(id).classList.add('highlight');
+        },index*500);
+    });
+}
+
+function showPXC(){
+    resetFlow();
+    ['l1','l4','l7','l8','l9','l10','l11','l12'].forEach(id=>{
+        document.getElementById(id).classList.add('highlight');
+    });
+}
+
+function showTraditional(){
+    resetFlow();
+    ['l3','l6','l7','l8'].forEach(id=>{
+        document.getElementById(id).classList.add('highlight');
+    });
+}
+
+function showDisaster(){
+    resetFlow();
+    ['l10','l11','l12'].forEach(id=>{
+        document.getElementById(id).classList.add('highlight');
+    });
+}
+</script>
+
+<footer>
+© DevOps UCloud 导航系统 | Ultimate MySQL Cluster Architecture | Auto Generated
+</footer>
+
+</body>
+</html>

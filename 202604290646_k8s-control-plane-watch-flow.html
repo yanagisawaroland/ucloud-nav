@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes 控制平面全景图 - Watch 机制演示</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --panel: #ffffff;
+            --primary: #326ce5;
+            --green: #10b981;
+            --orange: #f59e0b;
+            --purple: #8b5cf6;
+            --text: #1e293b;
+            --muted: #64748b;
+        }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+        }
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        h1 { margin: 0; font-size: 32px; color: #0f172a; }
+        .controls {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(248, 250, 252, 0.9);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid #e2e8f0;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button.secondary { background: var(--muted); }
+        
+        .stage {
+            position: relative;
+            width: 1000px;
+            height: 600px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        .node {
+            position: absolute;
+            width: 200px;
+            padding: 15px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+        .node.active {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(50, 108, 229, 0.2);
+            transform: scale(1.05);
+        }
+        .node h3 { margin: 0 0 8px 0; font-size: 18px; }
+        .node p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+
+        #api-server { left: 400px; top: 250px; border-color: #cbd5e1; }
+        #etcd { left: 750px; top: 250px; border-color: #bbf7d0; }
+        #scheduler { left: 400px; top: 50px; border-color: #fef3c7; }
+        #controller { left: 400px; bottom: 50px; border-color: #ddd6fe; }
+        #client { left: 50px; top: 250px; }
+
+        .connection {
+            position: absolute;
+            height: 2px;
+            background: #e2e8f0;
+            z-index: 1;
+        }
+        .dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: none;
+            z-index: 20;
+        }
+        .info-box {
+            max-width: 1000px;
+            margin: 20px auto 60px;
+            padding: 20px;
+            background: #eff6ff;
+            border-radius: 12px;
+            border-left: 5px solid var(--primary);
+        }
+        #status-text { font-size: 18px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Kubernetes 控制平面全景图</h1>
+        <p>API Server, etcd, Scheduler, Controller Manager 交互与 Watch 机制</p>
+    </header>
+
+    <div class="controls">
+        <button onclick="startFlow()">播放全流程</button>
+        <button onclick="nextStep()">下一步</button>
+        <button class="secondary" onclick="resetFlow()">重置</button>
+    </div>
+
+    <div class="stage" id="stage">
+        <div id="client" class="node"><h3>Client (kubectl)</h3><p>发起声明式请求</p></div>
+        <div id="api-server" class="node"><h3>API Server</h3><p>核心枢纽 & 状态网关</p></div>
+        <div id="etcd" class="node"><h3>etcd</h3><p>持久化键值存储</p></div>
+        <div id="scheduler" class="node"><h3>Scheduler</h3><p>资源调度决策</p></div>
+        <div id="controller" class="node"><h3>Controller Manager</h3><p>状态调谐循环</p></div>
+        
+        <div id="flow-dot" class="dot"></div>
+    </div>
+
+    <div class="info-box">
+        <div id="status-text">点击“播放全流程”开始演示控制平面组件如何通过 Watch 机制协同工作。</div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        const dot = document.getElementById('flow-dot');
+        const status = document.getElementById('status-text');
+        const nodes = {
+            client: document.getElementById('client'),
+            api: document.getElementById('api-server'),
+            etcd: document.getElementById('etcd'),
+            scheduler: document.getElementById('scheduler'),
+            controller: document.getElementById('controller')
+        };
+
+        const steps = [
+            {
+                text: "1. 用户通过 kubectl 提交资源定义（如 Pod）到 API Server。",
+                from: {x: 150, y: 300}, to: {x: 400, y: 300},
+                active: ['client', 'api']
+            },
+            {
+                text: "2. API Server 验证请求并将对象持久化存储到 etcd 中。",
+                from: {x: 600, y: 300}, to: {x: 750, y: 300},
+                active: ['api', 'etcd']
+            },
+            {
+                text: "3. Scheduler 通过 Watch 机制发现新创建但未调度的 Pod。",
+                from: {x: 500, y: 250}, to: {x: 500, y: 130},
+                active: ['api', 'scheduler']
+            },
+            {
+                text: "4. Scheduler 计算最优节点，并将绑定结果写回 API Server。",
+                from: {x: 500, y: 130}, to: {x: 500, y: 250},
+                active: ['scheduler', 'api']
+            },
+            {
+                text: "5. Controller Manager 持续 Watch 资源状态，确保实际状态符合期望。",
+                from: {x: 500, y: 350}, to: {x: 500, y: 450},
+                active: ['api', 'controller']
+            },
+            {
+                text: "6. 当状态不一致时，控制器发起更新请求，API Server 更新 etcd。",
+                from: {x: 500, y: 450}, to: {x: 500, y: 350},
+                active: ['controller', 'api']
+            }
+        ];
+
+        function resetFlow() {
+            currentStep = 0;
+            dot.style.display = 'none';
+            status.innerText = "点击“播放全流程”开始演示。";
+            Object.values(nodes).forEach(n => n.classList.remove('active'));
+        }
+
+        function moveDot(from, to, callback) {
+            dot.style.display = 'block';
+            dot.style.left = from.x + 'px';
+            dot.style.top = from.y + 'px';
+            
+            setTimeout(() => {
+                dot.style.transition = 'all 1s ease-in-out';
+                dot.style.left = to.x + 'px';
+                dot.style.top = to.y + 'px';
+            }, 50);
+
+            setTimeout(() => {
+                dot.style.transition = 'none';
+                if(callback) callback();
+            }, 1100);
+        }
+
+        function nextStep() {
+            if (currentStep >= steps.length) {
+                resetFlow();
+                return;
+            }
+            
+            const step = steps[currentStep];
+            Object.values(nodes).forEach(n => n.classList.remove('active'));
+            step.active.forEach(id => nodes[id].classList.add('active'));
+            status.innerText = step.text;
+            
+            moveDot(step.from, step.to);
+            currentStep++;
+        }
+
+        function startFlow() {
+            resetFlow();
+            let i = 0;
+            function run() {
+                if (i < steps.length) {
+                    nextStep();
+                    i++;
+                    setTimeout(run, 2000);
+                }
+            }
+            run();
+        }
+    </script>
+</body>
+</html>

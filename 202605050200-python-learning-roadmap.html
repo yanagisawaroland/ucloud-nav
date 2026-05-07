@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python学习路线图：基础到进阶</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    background: #f4f8fb;
+    color: #333;
+    text-align: center;
+}
+
+header {
+    background: #dceeff;
+    padding: 25px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 38px;
+}
+
+.description {
+    width: 90%;
+    margin: 20px auto;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    line-height: 2;
+    text-align: left;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    font-size: 18px;
+}
+
+.controls {
+    margin: 25px;
+}
+
+button {
+    padding: 12px 24px;
+    margin: 8px;
+    font-size: 18px;
+    border: none;
+    border-radius: 8px;
+    background: #4da6ff;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #1e90ff;
+}
+
+.diagram-container {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 40px;
+}
+
+svg {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    width: 1800px;
+    height: 900px;
+    display: none;
+    margin: auto;
+}
+
+svg.active {
+    display: block;
+}
+
+.node {
+    fill: #d9ecff;
+    stroke: #4da6ff;
+    stroke-width: 2;
+}
+
+.text {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.subtext {
+    font-size: 14px;
+}
+
+.line {
+    stroke: #666;
+    stroke-width: 2;
+    marker-end: url(#arrow);
+}
+
+footer {
+    padding: 20px;
+    color: #666;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Python语言学习路线图（基础 → 高级）</h1>
+</header>
+
+<div class="description">
+<strong>学习路径：</strong><br>
+① Python基础语法：变量、数据类型、条件、循环、函数<br>
+② 核心进阶：面向对象、模块、异常处理、文件操作<br>
+③ 高级开发：并发编程、装饰器、生成器、性能优化<br>
+④ Web开发：Flask / Django / FastAPI<br>
+⑤ 数据分析：NumPy / Pandas / Matplotlib<br>
+⑥ 人工智能：机器学习 / 深度学习 / 自动化运维<br>
+</div>
+
+<div class="controls">
+    <button onclick="showDiagram('basic')">基础阶段</button>
+    <button onclick="showDiagram('advanced')">进阶阶段</button>
+    <button onclick="showDiagram('career')">职业方向</button>
+</div>
+
+<div class="diagram-container">
+
+<!-- 基础 -->
+<svg id="basic" class="active" viewBox="0 0 1800 900">
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
+<path d="M0,0 L0,6 L9,3 z" fill="#666"></path>
+</marker>
+</defs>
+
+<rect class="node" x="100" y="300" width="220" height="80"/>
+<text class="text" x="210" y="345" text-anchor="middle">Python安装</text>
+
+<rect class="node" x="450" y="300" width="220" height="80"/>
+<text class="text" x="560" y="345" text-anchor="middle">基础语法</text>
+
+<rect class="node" x="800" y="300" width="220" height="80"/>
+<text class="text" x="910" y="345" text-anchor="middle">函数 / 模块</text>
+
+<rect class="node" x="1150" y="300" width="220" height="80"/>
+<text class="text" x="1260" y="345" text-anchor="middle">面向对象</text>
+
+<line class="line" x1="320" y1="340" x2="450" y2="340"/>
+<line class="line" x1="670" y1="340" x2="800" y2="340"/>
+<line class="line" x1="1020" y1="340" x2="1150" y2="340"/>
+</svg>
+
+<!-- 进阶 -->
+<svg id="advanced" viewBox="0 0 1800 900">
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
+<path d="M0,0 L0,6 L9,3 z" fill="#666"></path>
+</marker>
+</defs>
+
+<rect class="node" x="100" y="300" width="220" height="80"/>
+<text class="text" x="210" y="345" text-anchor="middle">装饰器</text>
+
+<rect class="node" x="450" y="300" width="220" height="80"/>
+<text class="text" x="560" y="345" text-anchor="middle">生成器</text>
+
+<rect class="node" x="800" y="300" width="220" height="80"/>
+<text class="text" x="910" y="345" text-anchor="middle">多线程/协程</text>
+
+<rect class="node" x="1150" y="300" width="220" height="80"/>
+<text class="text" x="1260" y="345" text-anchor="middle">性能优化</text>
+
+<line class="line" x1="320" y1="340" x2="450" y2="340"/>
+<line class="line" x1="670" y1="340" x2="800" y2="340"/>
+<line class="line" x1="1020" y1="340" x2="1150" y2="340"/>
+</svg>
+
+<!-- 职业 -->
+<svg id="career" viewBox="0 0 1800 900">
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
+<path d="M0,0 L0,6 L9,3 z" fill="#666"></path>
+</marker>
+</defs>
+
+<rect class="node" x="100" y="300" width="220" height="80"/>
+<text class="text" x="210" y="345" text-anchor="middle">Web开发</text>
+
+<rect class="node" x="450" y="300" width="220" height="80"/>
+<text class="text" x="560" y="345" text-anchor="middle">数据分析</text>
+
+<rect class="node" x="800" y="300" width="220" height="80"/>
+<text class="text" x="910" y="345" text-anchor="middle">人工智能</text>
+
+<rect class="node" x="1150" y="300" width="220" height="80"/>
+<text class="text" x="1260" y="345" text-anchor="middle">自动化运维</text>
+
+<line class="line" x1="320" y1="340" x2="450" y2="340"/>
+<line class="line" x1="670" y1="340" x2="800" y2="340"/>
+<line class="line" x1="1020" y1="340" x2="1150" y2="340"/>
+</svg>
+
+</div>
+
+<footer>
+© Python学习路线图 | DevOps UCloud
+</footer>
+
+<script>
+function showDiagram(id) {
+    var diagrams = document.querySelectorAll("svg");
+    diagrams.forEach(function(svg) {
+        svg.classList.remove("active");
+    });
+
+    document.getElementById(id).classList.add("active");
+}
+</script>
+
+</body>
+</html>

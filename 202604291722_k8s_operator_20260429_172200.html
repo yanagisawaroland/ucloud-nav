@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>K8s Operator 工作原理 · CRD → Controller → Reconcile</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  background:#f0f4fa;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  padding:22px 10px 64px;
+}
+h1{font-size:20px;font-weight:700;color:#15223a;margin-bottom:4px;text-align:center;letter-spacing:.5px}
+.sub{font-size:12px;color:#7e90aa;margin-bottom:14px;text-align:center;line-height:1.75}
+
+/* ── controls ── */
+.ctrl{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:13px;align-items:center}
+.btn{padding:6px 15px;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;transition:all .16s}
+.bp{background:#2448c0;color:#fff}.bp:hover{background:#1634a0}
+.bs{background:#fff;color:#344258;border:1.2px solid #c2d0e4}.bs:hover{background:#e2eaf8;border-color:#2448c0}
+.br{background:#e4ecf6;color:#546070;border:1.2px solid #c2d0e4}.br:hover{background:#d2dcea}
+.slbl{font-size:11.5px;color:#7e90aa}
+.tabs{display:flex;gap:5px}
+.tab{padding:5px 12px;border-radius:6px;border:1.2px solid #c2d0e4;background:#fff;
+     font-size:11.5px;cursor:pointer;color:#344258;transition:all .14s}
+.tab.on{background:#2448c0;color:#fff;border-color:#2448c0}
+
+/* ── legend ── */
+.lgd{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;font-size:11.5px;color:#546070}
+.li{display:flex;align-items:center;gap:4px}
+.lb{width:13px;height:13px;border-radius:3px;flex-shrink:0}
+
+/* ── canvas ── */
+.wrap{background:#fff;border-radius:16px;box-shadow:0 3px 22px rgba(0,0,0,.09);
+  padding:20px 14px 18px;width:100%;max-width:1040px;overflow-x:auto}
+
+/* ── node anim ── */
+.ng{opacity:0;transition:opacity .44s,transform .44s;transform:translateY(8px)}
+.ng.v{opacity:1;transform:translateY(0)}
+.cg{opacity:0;transition:opacity .34s}.cg.v{opacity:1}
+
+/* ── dots ── */
+.dots{display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;background:#d6e0f0;cursor:pointer;transition:background .22s}
+.dot.on{background:#2448c0}
+
+/* ── info ── */
+.info{margin-top:11px;font-size:12.5px;color:#46586e;text-align:center;
+  min-height:42px;line-height:1.8;max-width:1000px;padding:0 8px}
+
+/* ── animations ── */
+@keyframes fdash{to{stroke-dashoffset:-16}}
+.fdash{stroke-dasharray:5 4;animation:fdash 1s linear infinite}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.spin-g{transform-origin:500px 498px}
+.spin-g.active{animation:spin 3s linear infinite}
+@keyframes pulseOpacity{0%,100%{opacity:.55}50%{opacity:1}}
+.pulse{animation:pulseOpacity 1.3s ease-in-out infinite}
+@keyframes statusBlink{0%,100%{fill:#16a34a}50%{fill:#86efac}}
+</style>
+</head>
+<body>
+
+<h1>K8s Operator 工作原理</h1>
+<p class="sub">
+  CRD 定义扩展资源 &nbsp;→&nbsp; Controller Watch 事件 &nbsp;→&nbsp; Reconcile 调谐循环 &nbsp;→&nbsp; 实际状态收敛到期望状态<br>
+  选择场景后播放，或逐步浏览每个阶段
+</p>
+
+<div class="ctrl">
+  <button class="btn bp" id="btnPlay" onclick="togglePlay()">▶ 播放</button>
+  <button class="btn bs" onclick="stepFwd()">→ 下一步</button>
+  <button class="btn bs" onclick="stepBk()">← 上一步</button>
+  <button class="btn br" onclick="doReset()">↺ 重置</button>
+  <span class="slbl">速度</span>
+  <button class="btn bs" onclick="spd=1500">慢</button>
+  <button class="btn bs" onclick="spd=880">中</button>
+  <button class="btn bs" onclick="spd=380">快</button>
+  <div class="tabs">
+    <span class="slbl">场景&nbsp;</span>
+    <button class="tab on" id="t0" onclick="setScene(0)">创建 CR</button>
+    <button class="tab"    id="t1" onclick="setScene(1)">更新 CR</button>
+    <button class="tab"    id="t2" onclick="setScene(2)">故障自愈</button>
+    <button class="tab"    id="t3" onclick="setScene(3)">删除 CR</button>
+  </div>
+</div>
+
+<div class="lgd">
+  <div class="li"><div class="lb" style="background:#dbeafe;border:1.2px solid #3b82f6"></div>CRD / CR 定义</div>
+  <div class="li"><div class="lb" style="background:#fef3c7;border:1.2px solid #d97706"></div>API Server / etcd</div>
+  <div class="li"><div class="lb" style="background:#ede9fe;border:1.2px solid #7c3aed"></div>Controller / Watch</div>
+  <div class="li"><div class="lb" style="background:#dcfce7;border:1.2px solid #16a34a"></div>Reconcile 成功</div>
+  <div class="li"><div class="lb" style="background:#fee2e2;border:1.2px solid #dc2626"></div>错误 / 重试</div>
+  <div class="li"><div class="lb" style="background:#f0fdf4;border:1.2px dashed #16a34a"></div>实际资源</div>
+</div>
+
+<div class="wrap">
+<svg id="mainsvg" width="100%" viewBox="0 0 1040 980" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ma" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#8090a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2448c0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#16a34a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#dc2626" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mo" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#d97706" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="mv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#7c3aed" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+</defs>
+
+<!-- ══════════════════════════════════════════════
+     S0  顶部：开发者定义 CRD
+══════════════════════════════════════════════ -->
+<g class="ng" id="s0">
+  <!-- 开发者 -->
+  <rect x="30" y="14" width="200" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.3"/>
+  <text x="130" y="36" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#1e3a8a">👨‍💻 开发者 / 平台团队</text>
+  <text x="130" y="55" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">编写 CRD YAML</text>
+  <text x="130" y="68" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">kubectl apply -f crd.yaml</text>
+
+  <!-- CRD 定义框 -->
+  <rect x="270" y="14" width="500" height="60" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.3"/>
+  <text x="520" y="34" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#1e3a8a">📋 CustomResourceDefinition (CRD)</text>
+  <text x="520" y="52" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#1d4ed8" font-family="monospace">group: apps.example.com  |  kind: MyApp  |  versions: [v1alpha1, v1]</text>
+  <text id="s0-sub" x="520" y="67" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#3b82f6">—</text>
+
+  <!-- kubectl apply -->
+  <rect x="810" y="14" width="200" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.3"/>
+  <text x="910" y="36" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#1e3a8a">🖥 kubectl / CI-CD</text>
+  <text x="910" y="55" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">提交 CR 实例</text>
+  <text x="910" y="68" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">kubectl apply -f myapp.yaml</text>
+</g>
+
+<!-- c0→1 -->
+<g class="cg" id="c01">
+  <line x1="230" y1="44" x2="268" y2="44" stroke="#3b82f6" stroke-width="1.2" marker-end="url(#mb)"/>
+  <line x1="770" y1="44" x2="808" y2="44" stroke="#3b82f6" stroke-width="1.2" marker-end="url(#mb)"/>
+  <line x1="520" y1="74" x2="520" y2="112" stroke="#2448c0" stroke-width="1.3" marker-end="url(#mb)"/>
+  <line x1="910" y1="74" x2="910" y2="112" stroke="#2448c0" stroke-width="1.3" marker-end="url(#mb)"/>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S1  API Server + etcd
+══════════════════════════════════════════════ -->
+<g class="ng" id="s1">
+  <!-- API Server -->
+  <rect x="230" y="112" width="380" height="64" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.3"/>
+  <text x="420" y="132" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#78350f">⚙️ kube-apiserver</text>
+  <text x="420" y="151" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">认证 → 鉴权(RBAC) → Admission → 写入 etcd</text>
+  <text id="s1-api" x="420" y="168" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#d97706" font-weight="600">—</text>
+
+  <!-- etcd -->
+  <rect x="660" y="112" width="320" height="64" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.3"/>
+  <text x="820" y="132" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#78350f">🗄 etcd</text>
+  <text x="820" y="151" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">持久化存储 CR 对象 spec / status</text>
+  <text id="s1-etcd" x="820" y="168" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#d97706" font-weight="600">—</text>
+</g>
+
+<!-- c1→2 -->
+<g class="cg" id="c12">
+  <line x1="610" y1="144" x2="658" y2="144" stroke="#d97706" stroke-width="1.2" marker-end="url(#mo)"/>
+  <line x1="420" y1="176" x2="420" y2="214" stroke="#d97706" stroke-width="1.2" marker-end="url(#mo)"/>
+  <!-- Watch 虚线 从 apiserver 到 controller -->
+  <path class="fdash" d="M420 176 Q420 200 310 214" fill="none" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mv)"/>
+  <text x="355" y="202" text-anchor="middle" font-size="10" fill="#7c3aed">Watch</text>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S2  Controller Manager + Informer
+══════════════════════════════════════════════ -->
+<g class="ng" id="s2">
+  <!-- Controller Manager -->
+  <rect x="30" y="214" width="360" height="72" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="210" y="234" text-anchor="middle" dominant-baseline="central" font-size="13.5" font-weight="700" fill="#3b0f8a">🎛 Operator Controller Manager</text>
+  <text x="210" y="253" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">注册 CRD Informer · 监听 Add/Update/Delete 事件</text>
+  <text x="210" y="270" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">controller-runtime / kubebuilder 框架</text>
+  <text id="s2-ctrl" x="210" y="281" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#7c3aed" font-weight="600">—</text>
+
+  <!-- Informer / WorkQueue -->
+  <rect x="430" y="214" width="560" height="72" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="710" y="234" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#3b0f8a">📬 Informer Cache + WorkQueue</text>
+  <text x="710" y="253" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">List&amp;Watch → 本地缓存 · 去重 · 限速入队</text>
+  <text x="710" y="270" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5b21b6">RateLimitingQueue · 指数退避重试</text>
+  <text id="s2-queue" x="710" y="281" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#7c3aed" font-weight="600">—</text>
+</g>
+
+<!-- c2→3 -->
+<g class="cg" id="c23">
+  <line x1="210" y1="286" x2="210" y2="326" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mv)"/>
+  <line x1="710" y1="286" x2="710" y2="326" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mv)"/>
+  <line x1="390" y1="250" x2="428" y2="250" stroke="#7c3aed" stroke-width="1.1" marker-end="url(#mv)"/>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S3  Reconcile 核心循环
+══════════════════════════════════════════════ -->
+<g class="ng" id="s3">
+  <!-- Reconcile 大框 -->
+  <rect x="30" y="326" width="980" height="88" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="520" y="347" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="#14532d">🔄 Reconcile 调谐循环（核心）</text>
+
+  <!-- 子步骤 4个 -->
+  <rect x="50"  y="360" width="200" height="44" rx="7" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="150" y="376" text-anchor="middle" dominant-baseline="central" font-size="11.5" font-weight="600" fill="#14532d">① Get CR 当前状态</text>
+  <text x="150" y="393" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#166534">从 Cache 读取 spec/status</text>
+
+  <rect x="280" y="360" width="200" height="44" rx="7" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="380" y="376" text-anchor="middle" dominant-baseline="central" font-size="11.5" font-weight="600" fill="#14532d">② 对比期望 vs 实际</text>
+  <text x="380" y="393" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#166534">spec.desired ↔ status.actual</text>
+
+  <rect x="510" y="360" width="200" height="44" rx="7" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="610" y="376" text-anchor="middle" dominant-baseline="central" font-size="11.5" font-weight="600" fill="#14532d">③ 执行变更操作</text>
+  <text x="610" y="393" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#166534">Create/Update/Delete 子资源</text>
+
+  <rect x="740" y="360" width="250" height="44" rx="7" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="865" y="376" text-anchor="middle" dominant-baseline="central" font-size="11.5" font-weight="600" fill="#14532d">④ 更新 CR Status</text>
+  <text x="865" y="393" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#166534">status.conditions · observedGeneration</text>
+
+  <!-- 步骤间箭头 -->
+  <line x1="250" y1="382" x2="278" y2="382" stroke="#16a34a" stroke-width="1.1" marker-end="url(#mg)"/>
+  <line x1="480" y1="382" x2="508" y2="382" stroke="#16a34a" stroke-width="1.1" marker-end="url(#mg)"/>
+  <line x1="710" y1="382" x2="738" y2="382" stroke="#16a34a" stroke-width="1.1" marker-end="url(#mg)"/>
+
+  <text id="s3-sub" x="520" y="408" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#15803d" font-weight="600">—</text>
+</g>
+
+<!-- c3→4 两路：成功 / 错误 -->
+<g class="cg" id="c34">
+  <line x1="350" y1="414" x2="240" y2="456" stroke="#16a34a" stroke-width="1.3" marker-end="url(#mg)"/>
+  <line x1="690" y1="414" x2="800" y2="456" stroke="#dc2626" stroke-width="1.3" marker-end="url(#mr)"/>
+  <text x="268" y="444" font-size="10" fill="#16a34a">成功</text>
+  <text x="758" y="444" font-size="10" fill="#dc2626">错误/重试</text>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S4  成功路径 + 错误重试
+══════════════════════════════════════════════ -->
+<g class="ng" id="s4">
+  <!-- 成功 -->
+  <rect x="60"  y="456" width="340" height="66" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="230" y="476" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#14532d">✅ Reconcile 成功</text>
+  <text x="230" y="495" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#166534">status.phase=Running · conditions=[Ready:True]</text>
+  <text id="s4-ok" x="230" y="513" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#15803d" font-weight="600">—</text>
+
+  <!-- 错误重试 -->
+  <rect x="640" y="456" width="340" height="66" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="810" y="476" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#7f1d1d">⚠️ 错误 → 重新入队</text>
+  <text x="810" y="495" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#991b1b">Return ctrl.Result{Requeue:true} · 指数退避</text>
+  <text id="s4-err" x="810" y="513" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#dc2626" font-weight="600">—</text>
+</g>
+
+<!-- c4→5 -->
+<g class="cg" id="c45">
+  <line x1="230" y1="522" x2="230" y2="562" stroke="#16a34a" stroke-width="1.2" marker-end="url(#mg)"/>
+  <line x1="810" y1="522" x2="810" y2="562" stroke="#dc2626" stroke-width="1.2" marker-end="url(#mr)"/>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S5  实际资源创建 + 状态回写
+══════════════════════════════════════════════ -->
+<g class="ng" id="s5">
+  <!-- 实际资源 -->
+  <rect x="30" y="562" width="400" height="76" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.2" stroke-dasharray="6 3"/>
+  <text x="230" y="582" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#14532d">🏗 实际 K8s 资源（由 Operator 创建）</text>
+  <!-- chips -->
+  <rect x="46"  y="596" width="80" height="28" rx="5" fill="#dcfce7" stroke="#16a34a" stroke-width=".9"/>
+  <text x="86"  y="610" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" fill="#15803d">Deployment</text>
+  <rect x="136" y="596" width="68" height="28" rx="5" fill="#dcfce7" stroke="#16a34a" stroke-width=".9"/>
+  <text x="170" y="610" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" fill="#15803d">Service</text>
+  <rect x="214" y="596" width="80" height="28" rx="5" fill="#dcfce7" stroke="#16a34a" stroke-width=".9"/>
+  <text x="254" y="610" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" fill="#15803d">ConfigMap</text>
+  <rect x="304" y="596" width="68" height="28" rx="5" fill="#dcfce7" stroke="#16a34a" stroke-width=".9"/>
+  <text x="338" y="610" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" fill="#15803d">Secret</text>
+  <text id="s5-res" x="230" y="631" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#16a34a" font-weight="600">—</text>
+
+  <!-- 状态回写 -->
+  <rect x="580" y="562" width="420" height="76" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.3"/>
+  <text x="790" y="582" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#713f12">📊 CR Status 回写 → etcd</text>
+  <text x="790" y="601" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#854d0e">status.readyReplicas · status.conditions</text>
+  <text x="790" y="618" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#854d0e">status.observedGeneration · status.phase</text>
+  <text id="s5-status" x="790" y="631" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#ca8a04" font-weight="600">—</text>
+</g>
+
+<!-- c5→6 -->
+<g class="cg" id="c56">
+  <line x1="230" y1="638" x2="230" y2="678" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <line x1="790" y1="638" x2="790" y2="678" stroke="#ca8a04" stroke-width="1.2" marker-end="url(#mo)"/>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S6  用户可见结果 + 闭环 Watch
+══════════════════════════════════════════════ -->
+<g class="ng" id="s6">
+  <rect x="30"  y="678" width="400" height="64" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="230" y="698" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#1e3a8a">👁 用户可见状态</text>
+  <text x="230" y="717" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2563eb">kubectl get myapp → STATUS: Running</text>
+  <text id="s6-user" x="230" y="734" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#2448c0" font-weight="600">—</text>
+
+  <rect x="580" y="678" width="420" height="64" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.2"/>
+  <text x="790" y="698" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="#78350f">🔁 Watch 持续监听变化</text>
+  <text x="790" y="717" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#92400e">任何 CR/子资源变化 → 重新触发 Reconcile</text>
+  <text id="s6-watch" x="790" y="734" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#d97706" font-weight="600">—</text>
+</g>
+
+<!-- c6→7 闭环 -->
+<g class="cg" id="c67">
+  <line x1="230" y1="742" x2="230" y2="782" stroke="#8090a8" stroke-width="1.2" marker-end="url(#ma)"/>
+  <!-- 闭环箭头回到 Controller -->
+  <path class="fdash" d="M790 742 Q790 770 960 770 Q980 770 980 250 Q980 214 993 214" fill="none" stroke="#7c3aed" stroke-width="1.1" marker-end="url(#mv)"/>
+  <text x="940" y="510" text-anchor="middle" font-size="10" fill="#7c3aed" transform="rotate(-90,940,510)">持续调谐闭环</text>
+</g>
+
+<!-- ══════════════════════════════════════════════
+     S7  最终状态 + Finalizer
+══════════════════════════════════════════════ -->
+<g class="ng" id="s7">
+  <rect x="30" y="782" width="960" height="56" rx="10" fill="#f0f4ff" stroke="#2448c0" stroke-width="1.2"/>
+  <text x="520" y="802" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#16286a">💡 Operator 设计要点</text>
+  <text id="s7-tip" x="520" y="822" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#2a3a7a">—</text>
+</g>
+
+<!-- 左侧反馈闭环线 -->
+<g class="ng" id="s8">
+  <path d="M60 700 L20 700 L20 44 L28 44" fill="none" stroke="#b0bcd0" stroke-width=".9" stroke-dasharray="5 4" marker-end="url(#ma)"/>
+  <text x="12" y="400" text-anchor="middle" font-size="10" fill="#a0aec0" transform="rotate(-90,12,400)">audit · metrics · alert</text>
+</g>
+
+</svg>
+</div>
+
+<div class="dots" id="dots"></div>
+<div class="info" id="info">选择场景后点击「播放」，或逐步浏览 CRD → Watch → Reconcile → 实际资源 完整流程</div>
+
+<script>
+const SC = [
+  { /* 0: 创建 CR */
+    s0sub: 'kind: MyApp  name: myapp-prod  spec.replicas: 3  spec.image: nginx:1.25',
+    s1api: 'POST /apis/apps.example.com/v1/namespaces/default/myapps → 201 Created',
+    s1etcd: 'key: /registry/apps.example.com/myapps/default/myapp-prod → 写入成功',
+    s2ctrl: '事件类型: ADD · object: myapp-prod · 入队 WorkQueue',
+    s2queue: 'Queue 收到 default/myapp-prod · RateLimit 通过 · 分发给 Reconciler',
+    s3sub: '① Get myapp-prod spec.replicas=3 ② 发现 Deployment 不存在 ③ Create Deployment/Service ④ 更新 status',
+    s4ok: 'Deployment nginx-myapp-prod 创建成功 · 3 Pod 调度完成',
+    s4err: '若镜像拉取失败 → Requeue after 5s → 最多重试 10 次',
+    s5res: '已创建: Deployment(3副本) · Service(ClusterIP) · ConfigMap(nginx.conf)',
+    s5status: 'status.phase=Running · readyReplicas=3 · conditions=[{type:Ready,status:True}]',
+    s6user: 'kubectl get myapp myapp-prod → NAME: myapp-prod  STATUS: Running  REPLICAS: 3/3',
+    s6watch: 'Informer 持续 Watch myapp-prod 及其子资源变化，随时触发下一轮 Reconcile',
+    s7tip: 'Idempotent 幂等设计 · OwnerReference 级联删除 · Finalizer 清理钩子 · Status 子资源隔离写入',
+    tips: [
+      '【CRD 定义】开发者通过 kubectl apply 注册 CRD，API Server 扩展出新的资源类型 MyApp，此后可提交 CR 实例',
+      '【API Server + etcd】kubectl apply myapp.yaml → API Server 认证鉴权后写入 etcd，CR 对象持久化',
+      '【Controller Watch】Operator Controller Manager 通过 Informer List&Watch 监听到 ADD 事件，myapp-prod 进入 WorkQueue',
+      '【Reconcile 循环】① Get CR spec ② 对比发现 Deployment 不存在（期望3副本，实际0）③ 调用 Create ④ 回写 status',
+      '【成功/重试】Deployment 创建成功走绿色路径；若 API 调用失败则 Requeue 指数退避重试',
+      '【实际资源创建】Operator 代替人工创建 Deployment(3副本)、Service、ConfigMap，子资源均设置 OwnerReference',
+      '【用户可见状态】kubectl get myapp 显示 Running；Watch 继续监听，任何漂移都会触发新一轮 Reconcile',
+      '【持续调谐闭环】子资源变化（Pod 重启/扩缩）→ Informer 事件 → 重新 Reconcile → 状态收敛，形成自愈闭环',
+      '【设计要点】Reconcile 必须幂等；OwnerReference 保证级联删除；Finalizer 在删除前执行清理逻辑'
+    ]
+  },
+  { /* 1: 更新 CR */
+    s0sub: 'kubectl patch myapp myapp-prod --patch spec.replicas: 5（从3扩到5）',
+    s1api: 'PATCH /apis/apps.example.com/v1/namespaces/default/myapps/myapp-prod → 200 OK',
+    s1etcd: 'spec.replicas: 3 → 5  metadata.generation: 1 → 2  写入 etcd',
+    s2ctrl: '事件类型: UPDATE · generation 变化 → 入队 WorkQueue',
+    s2queue: 'Queue 去重合并 UPDATE 事件 · 防抖 · 传递给 Reconciler',
+    s3sub: '① Get spec.replicas=5 ② Deployment.replicas=3(不符) ③ Update Deployment.replicas=5 ④ 更新 status',
+    s4ok: 'Deployment 滚动扩容 3→5 · 新增 2 个 Pod 调度成功',
+    s4err: '若节点资源不足 → Pod Pending → Requeue 30s 后重检',
+    s5res: '已更新: Deployment(replicas 3→5) · HPA minReplicas 同步更新',
+    s5status: 'status.replicas=5 · readyReplicas=5 · observedGeneration=2',
+    s6user: 'kubectl get myapp myapp-prod → REPLICAS: 5/5  STATUS: Running',
+    s6watch: '扩容完成后子 Pod 状态变化持续上报，Operator 确认 readyReplicas 达到期望值',
+    s7tip: 'Generation/ObservedGeneration 防止重复处理 · Status 子资源写入不触发新 Generation · 滚动更新零停机',
+    tips: [
+      '【CRD 更新】用户执行 patch 将 spec.replicas 从 3 改为 5，触发 CR 对象 generation 从 1 增至 2',
+      '【API Server 写入】PATCH 请求通过 Admission Webhook 校验后写入 etcd，generation=2 标记此次变更',
+      '【Controller 感知】Informer 收到 UPDATE 事件，检测到 generation 变化（非 status 变化），进入 WorkQueue',
+      '【Reconcile 对比】读取 spec.replicas=5，发现 Deployment 当前 replicas=3，差值=2，执行 Update 操作',
+      '【滚动扩容成功】Deployment controller 新增 2 个 Pod，Operator Reconcile 检测到 readyReplicas=5 后标记成功',
+      '【资源同步更新】Deployment replicas 更新为 5，若配置了 HPA 则同步调整 minReplicas 下限',
+      '【Status 回写】observedGeneration=2 表示已处理此次变更；readyReplicas=5 表明扩容完成',
+      '【Watch 继续】新 Pod 启动过程中 Pod 状态变化持续触发 Reconcile，确保最终一致',
+      '【设计要点】用 observedGeneration==generation 判断是否已处理；Status 更新不触发 generation 递增，避免死循环'
+    ]
+  },
+  { /* 2: 故障自愈 */
+    s0sub: '运行中 Pod 异常退出 → Operator 检测到 readyReplicas < spec.replicas',
+    s1api: 'Watch 事件: Pod Deleted / Pod CrashLoopBackOff → Informer 触发 Reconcile',
+    s1etcd: 'Deployment status.readyReplicas=1（期望3）→ 漂移检测激活',
+    s2ctrl: '事件类型: 子资源 UPDATE · Pod 不健康 → 入队重新 Reconcile',
+    s2queue: 'OwnerReference 级联事件 · myapp-prod 重新入队 · 立即处理',
+    s3sub: '① Get readyReplicas=1 ② 期望3，差值2 ③ 无需修改 Deployment(已存在) ④ 等待 Pod 恢复',
+    s4ok: 'Deployment 自动重建 Pod · 2个新 Pod 调度并 Running',
+    s4err: '若持续 CrashLoop → status.conditions=[{type:Degraded,status:True}] · 告警触发',
+    s5res: '重建: Pod-4 Pod-5 重新调度至健康节点 · 服务不中断（Service 摘除不健康 Pod）',
+    s5status: 'status.phase=Recovering → Running · status.conditions Degraded→Ready',
+    s6user: 'kubectl get myapp → STATUS 从 Degraded 恢复为 Running · REPLICAS: 3/3',
+    s6watch: 'Operator 每 30s 定期 Reconcile（非事件驱动）确保长期稳定，防止事件丢失',
+    s7tip: 'OwnerReference 级联事件驱动自愈 · 周期性 Reconcile 兜底 · Conditions 表达细粒度健康状态',
+    tips: [
+      '【故障触发】运行中的 2 个 Pod 异常崩溃，Deployment 控制器尝试重建，同时 Informer 产生 Pod DELETE/UPDATE 事件',
+      '【事件传播】Pod 设置了 OwnerReference 指向 Deployment，Operator Informer 通过 EnqueueRequestForOwner 感知到 myapp-prod 需要 Reconcile',
+      '【Controller 响应】子资源变化事件进入 WorkQueue，myapp-prod 被重新放入队列立即处理',
+      '【Reconcile 检测漂移】① 读取 CR spec.replicas=3 ② 检查 Deployment readyReplicas=1 ③ 漂移=2，但 Deployment 已存在无需 Create ④ 等待 Pod Ready',
+      '【自动恢复】Deployment controller 在 Operator 感知前已开始重建 Pod；Operator Reconcile 持续确认状态收敛',
+      '【实际资源恢复】新 Pod 调度至健康节点，Readiness Probe 通过后 Service Endpoints 重新加入，流量恢复',
+      '【Status 状态机】status.phase: Running→Degraded→Recovering→Running，conditions 记录每次状态变化原因',
+      '【Watch 闭环兜底】Operator 设置 requeueAfter=30s 定期 Reconcile，防止事件丢失导致状态长期不一致',
+      '【设计要点】设置 OwnerReference 驱动级联 Reconcile；Conditions 提供细粒度状态；区分 Transient/Permanent 错误'
+    ]
+  },
+  { /* 3: 删除 CR */
+    s0sub: 'kubectl delete myapp myapp-prod → API Server 标记 DeletionTimestamp',
+    s1api: 'DELETE 请求 → 对象添加 metadata.deletionTimestamp · Finalizer 阻止立即删除',
+    s1etcd: 'myapp-prod.metadata.deletionTimestamp=now · finalizers:[apps.example.com/cleanup]',
+    s2ctrl: '事件类型: UPDATE(DeletionTimestamp set) · Finalizer 存在 → 触发清理 Reconcile',
+    s2queue: '检测到 DeletionTimestamp → 进入清理模式 · 执行 Finalizer 逻辑',
+    s3sub: '① 检测 DeletionTimestamp ② 清理外部资源(DB/LB) ③ 删除子资源 ④ 移除 Finalizer',
+    s4ok: '外部资源清理完成 · Finalizer 移除 · API Server 执行真正删除',
+    s4err: '若外部资源清理失败 → 保留 Finalizer → 阻止删除 · 告警运维介入',
+    s5res: '已删除: Deployment · Service · ConfigMap · Secret（OwnerReference 级联删除）',
+    s5status: 'CR 对象从 etcd 彻底移除 · 相关 RBAC/ServiceAccount 清理',
+    s6user: 'kubectl get myapp → Error from server (NotFound): myapps "myapp-prod" not found',
+    s6watch: 'Informer 感知 DELETE 事件 · Controller 停止处理该 CR · 清理本地缓存',
+    s7tip: 'Finalizer 保证清理顺序 · PreDelete Hook 处理外部资源 · OwnerReference 自动级联删除 K8s 子资源',
+    tips: [
+      '【删除触发】kubectl delete myapp 发送 DELETE 请求，API Server 检测到 Finalizer 存在，不立即删除，先标记 DeletionTimestamp',
+      '【Finalizer 机制】DeletionTimestamp 被设置后，对象进入"terminating"状态，etcd 中仍保留，等待 Finalizer 执行完毕',
+      '【Controller 感知删除】Informer 收到 UPDATE 事件（DeletionTimestamp 新增），Controller 判断需要执行清理逻辑',
+      '【Reconcile 清理流程】① 检测 DeletionTimestamp ② 清理外部资源（数据库连接/云 LB）③ 删除未被 OwnerReference 覆盖的资源 ④ 移除 Finalizer',
+      '【清理成功路径】外部资源清理完毕后，Controller 调用 RemoveFinalizer → API Server 真正删除 CR 对象',
+      '【OwnerReference 级联删除】Deployment/Service/ConfigMap 均设置了 OwnerReference，CR 删除时 GC 自动级联清理',
+      '【etcd 彻底清除】Finalizer 移除后 API Server 从 etcd 删除对象，Watch 收到最终 DELETE 事件',
+      '【Informer 清理】Controller 感知 DELETE 事件后停止处理该 CR，从本地缓存中移除，WorkQueue 不再接收相关事件',
+      '【设计要点】Finalizer 名称用域名前缀防冲突；清理逻辑必须幂等；区分 K8s 内资源（OwnerRef）和外部资源（Finalizer）'
+    ]
+  }
+];
+
+const SIDS=['s0','s1','s2','s3','s4','s5','s6','s7','s8'];
+const CIDS=[null,'c01','c12','c23','c34','c45','c56','c67',null];
+let cur=-1,playing=false,timer=null,spd=900,scene=0;
+
+const dotsEl=document.getElementById('dots');
+const infoEl=document.getElementById('info');
+const btnPlay=document.getElementById('btnPlay');
+
+SIDS.forEach((_,i)=>{
+  const d=document.createElement('div');
+  d.className='dot';d.onclick=()=>jumpTo(i);dotsEl.appendChild(d);
+});
+function updDots(){dotsEl.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('on',i===cur));}
+
+function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
+function applySceneData(sc){
+  const s=SC[sc];
+  set('s0-sub',s.s0sub); set('s1-api',s.s1api); set('s1-etcd',s.s1etcd);
+  set('s2-ctrl',s.s2ctrl); set('s2-queue',s.s2queue); set('s3-sub',s.s3sub);
+  set('s4-ok',s.s4ok); set('s4-err',s.s4err);
+  set('s5-res',s.s5res); set('s5-status',s.s5status);
+  set('s6-user',s.s6user); set('s6-watch',s.s6watch); set('s7-tip',s.s7tip);
+}
+
+function showStep(idx){
+  if(idx<0||idx>=SIDS.length)return;
+  document.getElementById(SIDS[idx]).classList.add('v');
+  if(CIDS[idx]){const el=document.getElementById(CIDS[idx]);if(el)el.classList.add('v');}
+  if(idx>=0) applySceneData(scene);
+  infoEl.textContent=SC[scene].tips[idx];
+  cur=idx; updDots();
+}
+function jumpTo(idx){if(idx<=cur)return;for(let i=cur+1;i<=idx;i++)showStep(i);}
+function stepFwd(){stopPlay();if(cur<SIDS.length-1)showStep(cur+1);}
+function stepBk(){
+  stopPlay();
+  if(cur<=0){doReset();return;}
+  const t=cur-1;doReset(true);for(let i=0;i<=t;i++)showStep(i);
+}
+function doReset(silent){
+  stopPlay();
+  document.querySelectorAll('.ng,.cg').forEach(el=>el.classList.remove('v'));
+  ['s0-sub','s1-api','s1-etcd','s2-ctrl','s2-queue','s3-sub',
+   's4-ok','s4-err','s5-res','s5-status','s6-user','s6-watch','s7-tip'].forEach(id=>set(id,'—'));
+  cur=-1; updDots();
+  if(!silent) infoEl.textContent='选择场景后点击「播放」，或逐步浏览 CRD → Watch → Reconcile → 实际资源 完整流程';
+}
+function togglePlay(){if(playing)stopPlay();else startPlay();}
+function startPlay(){
+  playing=true;btnPlay.textContent='⏸ 暂停';
+  function nx(){
+    if(cur>=SIDS.length-1){stopPlay();return;}
+    showStep(cur+1);timer=setTimeout(nx,spd);
+  }
+  timer=setTimeout(nx,cur===-1?200:spd);
+}
+function stopPlay(){playing=false;clearTimeout(timer);btnPlay.textContent='▶ 播放';}
+function setScene(n){
+  scene=n;
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',i===n));
+  doReset(false);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL集群技术对比：PXC vs 其他集群方案</title>
+    <!-- 引入 Mermaid.js 用于流程图 -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { background: '#f8f9fa', primaryColor: '#4a90e2', primaryBorderColor: '#2c3e50', lineColor: '#2c3e50' } });
+        window.mermaid = mermaid;
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #f0f2f5; /* 浅灰背景 */
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1300px;
+            width: 100%;
+            background: #ffffffd9;
+            backdrop-filter: blur(1px);
+            border-radius: 2rem;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+            padding: 2rem 1.8rem;
+            transition: all 0.2s;
+        }
+        h1 {
+            text-align: center;
+            color: #1e466e;
+            margin-bottom: 0.5rem;
+            font-size: 2.2rem;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+        .sub {
+            text-align: center;
+            color: #4a627a;
+            margin-bottom: 2rem;
+            border-left: 4px solid #4a90e2;
+            background: #eef3ff;
+            display: inline-block;
+            width: auto;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 0.5rem 1.2rem;
+            border-radius: 40px;
+            font-size: 0.95rem;
+        }
+        .button-panel {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin: 2rem 0 2rem 0;
+        }
+        .ctrl-btn {
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            padding: 0.7rem 1.6rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 3rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #1e466e;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+        .ctrl-btn:hover {
+            background: #e9f0fe;
+            border-color: #4a90e2;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px -8px rgba(74,144,226,0.3);
+        }
+        .ctrl-btn.active {
+            background: #4a90e2;
+            border-color: #4a90e2;
+            color: white;
+            box-shadow: 0 4px 12px rgba(74,144,226,0.3);
+        }
+        .diagram-area {
+            background: #fefefe;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            margin: 1rem 0 1.5rem 0;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.03);
+            border: 1px solid #e9edf2;
+            transition: background 0.2s;
+            min-height: 500px;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            overflow-x: auto;
+        }
+        .desc-card {
+            background: #f8fafc;
+            padding: 1.4rem 1.8rem;
+            border-radius: 1.2rem;
+            margin-top: 1.5rem;
+            border-left: 5px solid #4a90e2;
+            line-height: 1.5;
+            color: #1f2a3e;
+            font-size: 1rem;
+        }
+        .desc-card strong {
+            color: #1e466e;
+        }
+        footer {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #7c8ba0;
+            margin-top: 2rem;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1.5rem;
+        }
+        @media (max-width: 720px) {
+            body { padding: 1rem; }
+            .ctrl-btn { padding: 0.4rem 1rem; font-size: 0.8rem; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>⚡ MySQL 集群生态全景对比</h1>
+    <div style="text-align:center"><span class="sub">Percona XtraDB Cluster 与其他主流 MySQL 集群架构</span></div>
+
+    <div class="button-panel">
+        <button class="ctrl-btn active" id="btnPXC">🟢 Percona XtraDB Cluster (PXC)</button>
+        <button class="ctrl-btn" id="btnGrpRepl">🔄 MySQL Group Replication</button>
+        <button class="ctrl-btn" id="btnInnoCluster">📦 InnoDB Cluster (MySQL Shell)</button>
+        <button class="ctrl-btn" id="btnAsyncRepl">📡 异步/半同步主从复制</button>
+        <button class="ctrl-btn" id="btnCompare">📊 逻辑关系对比视图</button>
+    </div>
+
+    <div class="diagram-area">
+        <div class="mermaid" id="mermaidChart">
+            %% 默认展示 PXC 架构图
+            graph TB
+            subgraph "Percona XtraDB Cluster (Galera-based)"
+                Node1[("Node A (Read/Write)")]
+                Node2[("Node B (Read/Write)")]
+                Node3[("Node C (Read/Write)")]
+            end
+            Node1 <-->|"同步复制 | 事务认证"| Node2
+            Node2 <-->|"gcache/IST"| Node3
+            Node3 <-->|"流控 | 集群一致性"| Node1
+            Client[("应用客户端")] --> Node1 & Node2 & Node3
+            style Client fill:#e8f0fe,stroke:#4a90e2
+            style Node1 fill:#d9eafb,stroke:#2c5a8c
+            style Node2 fill:#d9eafb,stroke:#2c5a8c
+            style Node3 fill:#d9eafb,stroke:#2c5a8c
+        </div>
+    </div>
+
+    <div class="desc-card" id="descText">
+        <strong>✨ PXC 核心特征：</strong> 基于 Galera 插件的同步多主集群，支持任意节点写入，数据实时同步，无延迟冲突。节点故障自动摘除，提供严格一致性，适合强一致性场景（支付、订单等）。
+    </div>
+    <footer>💡 点击上方按钮切换架构图 | 浅色主题 · 动态控制 | MySQL集群技术演进参考</footer>
+</div>
+
+<script>
+    // 定义不同集群对应的 Mermaid 流程图定义及说明文字
+    const diagrams = {
+        pxc: `graph TB
+            subgraph "Percona XtraDB Cluster (同步多主)"
+                N1[("Node1 (读写)")]
+                N2[("Node2 (读写)")]
+                N3[("Node3 (读写)")]
+            end
+            N1 <-->|"Galera Replication\n同步/认证"| N2
+            N2 <-->|"gcache/IST"| N3
+            N3 <-->|"流控 & 投票"| N1
+            Client["👥 应用服务器"] --> N1 & N2 & N3
+            style Client fill:#e9f0fe,stroke:#4a90e2
+            style N1 fill:#c7e0f5,stroke:#2c5a8c
+            style N2 fill:#c7e0f5,stroke:#2c5a8c
+            style N3 fill:#c7e0f5,stroke:#2c5a8c`,
+        grp: `graph LR
+            subgraph "MySQL Group Replication (组复制)"
+                G1[("成员1 (PRIMARY)")]
+                G2[("成员2 (SECONDARY)")]
+                G3[("成员3 (SECONDARY)")]
+            end
+            G1 <-->|"Paxos类协议 | 事务共识"| G2
+            G2 <-->|"冲突检测"| G3
+            G3 <-->|"自动选主"| G1
+            App["应用程序"] -->|"读写请求"| G1
+            App -.->|"只读"| G2 & G3
+            style App fill:#e9f0fe,stroke:#4a90e2`,
+        innodb: `graph TB
+            subgraph "InnoDB Cluster (MySQL Router + Group Replication)"
+                Rtr[("MySQL Router")]
+                M1[("实例1 (主)")]
+                M2[("实例2 (从)")]
+                M3[("实例3 (从)")]
+            end
+            ClientApp["应用"] --> Rtr
+            Rtr -->|"读写"| M1
+            Rtr -->|"读负载均衡"| M2 & M3
+            M1 <-->|"Group Replication"| M2
+            M2 <-->|"自动同步"| M3
+            style ClientApp fill:#e9f0fe,stroke:#4a90e2`,
+        async: `graph LR
+            subgraph "异步/半同步主从复制"
+                Master[("Master (读写)")]
+                Slave1[("Slave (只读)")]
+                Slave2[("Slave (只读)")]
+            end
+            Master -->|"binlog异步/半同步"| Slave1
+            Master -->|"binlog流"| Slave2
+            AppWrite["写应用"] --> Master
+            AppRead["读应用"] --> Slave1 & Slave2
+            style Master fill:#fde7d9,stroke:#e68a2e
+            style Slave1 fill:#f9f3e8,stroke:#b68b40`,
+        compare: `flowchart TD
+            A[MySQL集群方案] --> B[同步多主集群]
+            A --> C[异步/半同步主从]
+            A --> D[官方高可用套件]
+            B --> B1[PXC<br/>Percona XtraDB Cluster]
+            B --> B2[MySQL Group Replication<br/>原生组复制]
+            D --> D1[InnoDB Cluster<br/>=  Group Replication + MySQL Router + MySQL Shell]
+            C --> C1[传统主从复制 + MHA/Orchestrator]
+            B1 -.->|"同为Galera基础"| B2
+            D1 -->|"底层基于"| B2
+            style B1 fill:#d4e6f1,stroke:#2874a6
+            style B2 fill:#d4e6f1,stroke:#2874a6
+            style D1 fill:#f9e5c9,stroke:#b45f06`
+    };
+
+    const descriptions = {
+        pxc: "✅ <strong>Percona XtraDB Cluster (PXC)</strong> — 完全同步复制，节点对等，写入任意节点立即同步到其他节点，无数据延迟，强一致性。适合对数据一致性要求极高的金融、交易系统。基于Galera，支持自动节点恢复。",
+        grp: "🔄 <strong>MySQL Group Replication</strong> — MySQL官方组复制，提供容错和自动选主，多主或单主模式。采用 Paxos 共识，保证多数派一致，但不支持多主写入冲突自动解决（需应用层规避）。",
+        innodb: "📦 <strong>InnoDB Cluster</strong> — 官方集成套件 = Group Replication + MySQL Router + MySQL Shell。简化高可用部署，Router 做读写分离，自动故障转移，是生产环境推荐方案之一。",
+        async: "📡 <strong>异步/半同步主从复制</strong> — 传统方案，主库写入后异步传输binlog，存在延迟甚至丢失风险；半同步加强一点可靠性。配合MHA/Orchestrator可实现一定程度高可用，但切换复杂，从库可能落后。",
+        compare: "📊 <strong>逻辑关系对比</strong> — PXC 与 Group Replication 同为同步复制，但 PXC 更早生产验证，Group Replication 官方原生；InnoDB Cluster 打包增强了易用性；传统主从复制架构简单但一致性较弱。"
+    };
+
+    let currentMermaid = null;
+
+    async function renderDiagram(type) {
+        const chartDiv = document.getElementById('mermaidChart');
+        const descDiv = document.getElementById('descText');
+        let mermaidDef = diagrams[type];
+        if (!mermaidDef) mermaidDef = diagrams.pxc;
+        descDiv.innerHTML = descriptions[type] || descriptions.pxc;
+
+        // 清空并重新渲染 mermaid
+        chartDiv.innerHTML = `<pre class="mermaid" style="text-align:center;">${mermaidDef}</pre>`;
+        if (window.mermaid) {
+            try {
+                await window.mermaid.run({
+                    nodes: document.querySelectorAll('.mermaid'),
+                    suppressErrors: true
+                });
+            } catch(e) { console.warn(e); }
+        }
+    }
+
+    // 绑定按钮事件
+    document.getElementById('btnPXC').addEventListener('click', () => { renderDiagram('pxc'); setActive('btnPXC'); });
+    document.getElementById('btnGrpRepl').addEventListener('click', () => { renderDiagram('grp'); setActive('btnGrpRepl'); });
+    document.getElementById('btnInnoCluster').addEventListener('click', () => { renderDiagram('innodb'); setActive('btnInnoCluster'); });
+    document.getElementById('btnAsyncRepl').addEventListener('click', () => { renderDiagram('async'); setActive('btnAsyncRepl'); });
+    document.getElementById('btnCompare').addEventListener('click', () => { renderDiagram('compare'); setActive('btnCompare'); });
+
+    function setActive(activeId) {
+        const btns = document.querySelectorAll('.ctrl-btn');
+        btns.forEach(btn => btn.classList.remove('active'));
+        document.getElementById(activeId).classList.add('active');
+    }
+
+    // 初始渲染 PXC
+    renderDiagram('pxc');
+</script>
+</body>
+</html>

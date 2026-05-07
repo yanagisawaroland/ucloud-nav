@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s 网络组件逻辑关系 &amp; 流程动态图</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 20px;
+}
+h1 { color: #2c3e50; margin: 20px 0 10px; font-size: 28px; }
+.subtitle { color: #7f8c8d; margin-bottom: 20px; font-size: 14px; }
+.controls {
+    display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
+}
+.controls button {
+    padding: 10px 24px; font-size: 15px; border: none; border-radius: 6px;
+    cursor: pointer; color: #fff; font-weight: bold; transition: all 0.3s;
+}
+.btn-play { background: #27ae60; }
+.btn-play:hover { background: #219a52; }
+.btn-pause { background: #e67e22; }
+.btn-pause:hover { background: #d35400; }
+.btn-reset { background: #e74c3c; }
+.btn-reset:hover { background: #c0392b; }
+.btn-step { background: #3498db; }
+.btn-step:hover { background: #2980b9; }
+.btn-mode { background: #8e44ad; }
+.btn-mode:hover { background: #7d3c98; }
+button:disabled { background: #bdc3c7 !important; cursor: not-allowed; }
+.canvas-wrap {
+    background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+    padding: 20px; width: 95%; max-width: 1100px;
+}
+canvas { width: 100%; border-radius: 8px; display: block; }
+.legend {
+    display: flex; flex-wrap: wrap; gap: 18px; justify-content: center;
+    margin-top: 16px; font-size: 13px; color: #555;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-color { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #ccc; }
+.info-box {
+    margin-top: 16px; padding: 14px 20px; background: #fefefe; border-left: 4px solid #3498db;
+    border-radius: 6px; font-size: 14px; color: #444; max-width: 1100px; width: 95%;
+    line-height: 1.8;
+}
+#statusText { font-weight: bold; color: #2c3e50; min-height: 20px; text-align: center; margin-bottom: 10px; font-size: 15px; }
+</style>
+</head>
+<body>
+<h1>Kubernetes 网络组件逻辑关系 &amp; 流程动态图</h1>
+<p class="subtitle">ClusterIP Service - Endpoint - Kube-proxy - iptables / IPVS - Pod 全链路可视化</p>
+
+<div id="statusText">点击 播放 开始动画演示</div>
+
+<div class="controls">
+    <button class="btn-play"  id="btnPlay"  onclick="play()">&#9654; 播放</button>
+    <button class="btn-pause" id="btnPause" onclick="pause()" disabled>&#9208; 暂停</button>
+    <button class="btn-step"  id="btnStep"  onclick="stepForward()">&#9197; 单步</button>
+    <button class="btn-reset" id="btnReset" onclick="reset()">&#8635; 重置</button>
+    <button class="btn-mode"  id="btnMode"  onclick="toggleMode()">切换: iptables 模式</button>
+</div>
+
+<div class="canvas-wrap">
+    <canvas id="cv" width="1060" height="620"></canvas>
+</div>
+
+<div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#3498db"></div>Client / 用户请求</div>
+    <div class="legend-item"><div class="legend-color" style="background:#2ecc71"></div>Service (ClusterIP)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e67e22"></div>Kube-proxy</div>
+    <div class="legend-item"><div class="legend-color" style="background:#9b59b6"></div>iptables / IPVS</div>
+    <div class="legend-item"><div class="legend-color" style="background:#1abc9c"></div>Endpoints</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e74c3c"></div>Pod (容器)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f39c12"></div>数据包 (Packet)</div>
+</div>
+
+<div class="info-box">
+    <b>流程说明：</b><br>
+    1. Client 发送请求到 Service 的 ClusterIP<br>
+    2. Kube-proxy 监听 API Server，维护转发规则<br>
+    3. 请求经过 Netfilter（iptables 或 IPVS）进行 DNAT 转换<br>
+    4. Endpoints 控制器维护 Service 与 Pod IP 的映射关系<br>
+    5. 数据包被转发到后端 Pod 实际处理请求
+</div>
+
+<script>
+var cv = document.getElementById('cv');
+var ctx = cv.getContext('2d');
+var W = cv.width, H = cv.height;
+
+var mode = 'iptables';
+var animState = 'idle';
+var step = 0;
+var maxStep = 6;
+var animTimer = null;
+var packetProgress = 0;
+var animFrame = null;
+var lastTime = 0;
+
+var stepDescs = [
+    'Step1: Client 发送请求 -> Service (ClusterIP)',
+    'Step2: Kube-proxy 从 API Server watch Service/Endpoint 信息',
+    'Step3: Kube-proxy 写入 Netfilter 规则',
+    'Step4: Endpoint Controller 更新 Service -> Pod 映射',
+    'Step5: Netfilter 执行 DNAT，选择后端 Pod',
+    'Step6: 数据包到达目标 Pod，请求处理完成'
+];
+
+function getStepDesc(s) {
+    var d = stepDescs[s] || '';
+    if (s === 2) d = 'Step3: Kube-proxy 写入 Netfilter 规则 (' + mode + ')';
+    return d;
+}
+
+var boxes = {
+    client:    { x: 60,  y: 250, w: 120, h: 70, label: 'Client',               color: '#3498db', tc: '#fff' },
+    service:   { x: 260, y: 250, w: 140, h: 70, label: 'Service\n(ClusterIP)',  color: '#2ecc71', tc: '#fff' },
+    kubeproxy: { x: 460, y: 100, w: 140, h: 70, label: 'Kube-proxy',           color: '#e67e22', tc: '#fff' },
+    apiserver: { x: 460, y: 10,  w: 140, h: 60, label: 'API Server',           color: '#95a5a6', tc: '#fff' },
+    netfilter: { x: 500, y: 250, w: 160, h: 70, label: 'Netfilter',            color: '#9b59b6', tc: '#fff' },
+    endpoints: { x: 500, y: 400, w: 140, h: 60, label: 'Endpoints',            color: '#1abc9c', tc: '#fff' },
+    pod1:      { x: 780, y: 160, w: 120, h: 60, label: 'Pod-1',                color: '#e74c3c', tc: '#fff' },
+    pod2:      { x: 780, y: 270, w: 120, h: 60, label: 'Pod-2',                color: '#e74c3c', tc: '#fff' },
+    pod3:      { x: 780, y: 380, w: 120, h: 60, label: 'Pod-3',                color: '#e74c3c', tc: '#fff' },
+    epctrl:    { x: 260, y: 420, w: 160, h: 55, label: 'Endpoint\nController', color: '#16a085', tc: '#fff' }
+};
+
+var arrowDefs = [
+    { from: 'client',    to: 'service',   label: '请求',   dash: false },
+    { from: 'service',   to: 'netfilter', label: '',       dash: false },
+    { from: 'kubeproxy', to: 'apiserver', label: 'watch',  dash: true  },
+    { from: 'kubeproxy', to: 'netfilter', label: '写规则', dash: false },
+    { from: 'netfilter', to: 'pod1',      label: '',       dash: false },
+    { from: 'netfilter', to: 'pod2',      label: 'DNAT',   dash: false },
+    { from: 'netfilter', to: 'pod3',      label: '',       dash: false },
+    { from: 'endpoints', to: 'netfilter', label: '映射',   dash: false },
+    { from: 'epctrl',    to: 'endpoints', label: '维护',   dash: false }
+];
+
+function bx(b) { return b.x + b.w / 2; }
+function by(b) { return b.y + b.h / 2; }
+
+function drawRR(x, y, w, h, r, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();}
+}
+
+function drawBox(b, hl) {
+    if(hl){ctx.shadowColor=b.color;ctx.shadowBlur=14;}
+    drawRR(b.x,b.y,b.w,b.h,10,b.color,hl?'#fff':'rgba(0,0,0,0.12)');
+    ctx.shadowBlur=0;
+    ctx.fillStyle=b.tc; ctx.font='bold 14px Segoe UI,Microsoft YaHei,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    var lines=b.label.split('\n');
+    for(var i=0;i<lines.length;i++){
+        ctx.fillText(lines[i], bx(b), by(b)+(i-(lines.length-1)/2)*18);
+    }
+}
+
+function drawArrow(a, hl) {
+    var fb=boxes[a.from], tb=boxes[a.to];
+    var x1=bx(fb),y1=by(fb),x2=bx(tb),y2=by(tb);
+    var ang=Math.atan2(y2-y1,x2-x1);
+    x1+=Math.cos(ang)*fb.w/2; y1+=Math.sin(ang)*fb.h/2;
+    x2-=Math.cos(ang)*tb.w/2; y2-=Math.sin(ang)*tb.h/2;
+    ctx.beginPath();
+    ctx.strokeStyle=hl?'#f39c12':'#aaa';
+    ctx.lineWidth=hl?3:1.5;
+    if(a.dash)ctx.setLineDash([6,4]);else ctx.setLineDash([]);
+    ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();ctx.fillStyle=hl?'#f39c12':'#aaa';
+    ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-12*Math.cos(ang-0.45),y2-12*Math.sin(ang-0.45));
+    ctx.lineTo(x2-12*Math.cos(ang+0.45),y2-12*Math.sin(ang+0.45));
+    ctx.fill();
+    if(a.label){
+        ctx.fillStyle=hl?'#e67e22':'#888';
+        ctx.font='12px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
+        ctx.fillText(a.label,(x1+x2)/2,(y1+y2)/2-6);
+    }
+}
+
+function hlArrows(s){
+    if(s===0)return[0];
+    if(s===1)return[2];
+    if(s===2)return[3];
+    if(s===3)return[7,8];
+    if(s===4)return[1,4,5,6];
+    if(s===5)return[5];
+    return[];
+}
+function hlBoxes(s){
+    if(s===0)return['client','service'];
+    if(s===1)return['kubeproxy','apiserver'];
+    if(s===2)return['kubeproxy','netfilter'];
+    if(s===3)return['endpoints','epctrl'];
+    if(s===4)return['service','netfilter','pod1','pod2','pod3'];
+    if(s===5)return['netfilter','pod2'];
+    return[];
+}
+function pktPath(s){
+    if(s===0)return[boxes.client,boxes.service];
+    if(s===4)return[boxes.service,boxes.netfilter];
+    if(s===5)return[boxes.netfilter,boxes.pod2];
+    return null;
+}
+
+function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#f9fafb';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#9b59b6';ctx.font='bold 13px sans-serif';
+    ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText('当前模式: '+mode.toUpperCase(),20,580);
+    boxes.netfilter.label='Netfilter\n('+mode+')';
+    var ha=hlArrows(step),hb=hlBoxes(step);
+    for(var i=0;i<arrowDefs.length;i++) drawArrow(arrowDefs[i],ha.indexOf(i)>=0);
+    var keys=Object.keys(boxes);
+    for(var i=0;i<keys.length;i++) drawBox(boxes[keys[i]],hb.indexOf(keys[i])>=0);
+    var pp=pktPath(step);
+    if(pp&&packetProgress>0){
+        var t=Math.min(packetProgress,1);
+        var px=bx(pp[0])+(bx(pp[1])-bx(pp[0]))*t;
+        var py=by(pp[0])+(by(pp[1])-by(pp[0]))*t;
+        ctx.beginPath();ctx.arc(px,py,10,0,Math.PI*2);
+        ctx.fillStyle='#f39c12';ctx.shadowColor='#f39c12';ctx.shadowBlur=16;ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#fff';ctx.font='bold 9px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('PKT',px,py);
+    }
+    ctx.fillStyle='#2c3e50';ctx.font='bold 14px sans-serif';
+    ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText('步骤 '+(step+1)+' / '+maxStep,20,560);
+}
+
+function updateStatus(){
+    document.getElementById('statusText').textContent=getStepDesc(step);
+}
+
+function animate(ts){
+    if(animState!=='playing')return;
+    if(!lastTime)lastTime=ts;
+    var dt=(ts-lastTime)/1000;lastTime=ts;
+    var pp=pktPath(step);
+    if(pp){
+        packetProgress+=dt*0.8;
+        if(packetProgress>=1){packetProgress=0;nextStep();}
+    }else{
+        packetProgress=0;
+        if(!animTimer){
+            animTimer=setTimeout(function(){animTimer=null;nextStep();},1500);
+        }
+    }
+    draw();updateStatus();
+    animFrame=requestAnimationFrame(animate);
+}
+
+function nextStep(){
+    if(step<maxStep-1){step++;packetProgress=0;}
+    else{
+        animState='idle';
+        document.getElementById('btnPlay').disabled=false;
+        document.getElementById('btnPause').disabled=true;
+        document.getElementById('btnStep').disabled=false;
+        document.getElementById('statusText').textContent='动画演示完成! 点击 重置 可重新播放';
+    }
+}
+
+function play(){
+    if(animState==='playing')return;
+    animState='playing';lastTime=0;
+    document.getElementById('btnPlay').disabled=true;
+    document.getElementById('btnPause').disabled=false;
+    document.getElementById('btnStep').disabled=true;
+    animFrame=requestAnimationFrame(animate);
+}
+function pause(){
+    animState='paused';
+    if(animTimer){clearTimeout(animTimer);animTimer=null;}
+    document.getElementById('btnPlay').disabled=false;
+    document.getElementById('btnPause').disabled=true;
+    document.getElementById('btnStep').disabled=false;
+}
+function reset(){
+    animState='idle';
+    if(animTimer){clearTimeout(animTimer);animTimer=null;}
+    if(animFrame)cancelAnimationFrame(animFrame);
+    step=0;packetProgress=0;lastTime=0;
+    document.getElementById('btnPlay').disabled=false;
+    document.getElementById('btnPause').disabled=true;
+    document.getElementById('btnStep').disabled=false;
+    document.getElementById('statusText').textContent='点击 播放 开始动画演示';
+    draw();updateStatus();
+}
+function stepForward(){
+    if(step<maxStep-1){step++;packetProgress=0;}
+    draw();updateStatus();
+}
+function toggleMode(){
+    mode=(mode==='iptables')?'ipvs':'iptables';
+    document.getElementById('btnMode').textContent='切换: '+mode+' 模式';
+    reset();
+}
+draw();updateStatus();
+</script>
+</body>
+</html>

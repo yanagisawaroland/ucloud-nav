@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>学习 Python：从基础到进阶 流程动态图</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background: #f4f6fb;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  }
+  .container {
+    max-width: 1400px;
+    margin: 40px auto;
+    text-align: center;
+  }
+  h1 {
+    font-size: 40px;
+    margin-bottom: 24px;
+    color: #333;
+  }
+  .subtitle {
+    font-size: 20px;
+    color: #666;
+    margin-bottom: 30px;
+  }
+  .btn-group {
+    margin-bottom: 30px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 10px 22px;
+    margin: 0 8px;
+    border-radius: 20px;
+    border: 1px solid #4a90e2;
+    background: #ffffff;
+    color: #4a90e2;
+    cursor: pointer;
+    font-size: 15px;
+    transition: all 0.2s ease;
+  }
+  .btn.active,
+  .btn:hover {
+    background: #4a90e2;
+    color: #ffffff;
+  }
+  .panel {
+    width: 92%;
+    margin: 0 auto;
+    padding: 28px 30px 34px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  }
+  .diagram {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .node {
+    padding: 14px 24px;
+    border-radius: 30px;
+    font-size: 20px;
+    font-weight: 600;
+    position: relative;
+    animation: pulse 2.2s infinite;
+  }
+  .node.basic { background: #e3f2fd; color: #1565c0; }
+  .node.oop { background: #e8f5e9; color: #2e7d32; }
+  .node.advanced { background: #fff3e0; color: #ef6c00; }
+  .node.project { background: #fce4ec; color: #ad1457; }
+  .arrow {
+    font-size: 30px;
+    color: #9e9e9e;
+    animation: flow 1.6s infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(74,144,226,0.4); }
+    50% { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(74,144,226,0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(74,144,226,0); }
+  }
+  @keyframes flow {
+    0% { opacity: 0.2; transform: translateX(-4px); }
+    50% { opacity: 1; transform: translateX(4px); }
+    100% { opacity: 0.2; transform: translateX(-4px); }
+  }
+  .flow-text {
+    margin-top: 20px;
+    font-size: 18px;
+    color: #555;
+    line-height: 1.8;
+    text-align: left;
+  }
+  .flow-text ul {
+    list-style: none;
+    padding-left: 0;
+  }
+  .flow-text li {
+    margin: 6px 0;
+  }
+  .flow-text li::before {
+    content: "• ";
+    color: #4a90e2;
+    font-weight: bold;
+  }
+  .hidden { display: none; }
+
+  /* 对比/路线表格 */
+  table {
+    width: 96%;
+    margin: 20px auto 0;
+    border-collapse: collapse;
+    font-size: 18px;
+  }
+  th, td {
+    border: 1px solid #d0d7e2;
+    padding: 14px 10px;
+  }
+  th {
+    background: #4a90e2;
+    color: #ffffff;
+  }
+  td {
+    background: #fafbff;
+    text-align: left;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>学习 Python：从基础到进阶</h1>
+  <div class="subtitle">从零开始，逐步构建语法、思维、工程能力与项目实战</div>
+
+  <div class="btn-group">
+    <button class="btn active" data-target="overview">整体学习路线</button>
+    <button class="btn" data-target="basic">阶段一：基础语法</button>
+    <button class="btn" data-target="oop">阶段二：面向对象</button>
+    <button class="btn" data-target="advanced">阶段三：进阶与生态</button>
+    <button class="btn" data-target="project">阶段四：项目实战</button>
+  </div>
+
+  <!-- 总览：从基础到进阶的完整流程动态图 -->
+  <div id="overview" class="panel">
+    <div class="diagram">
+      <div class="node basic">基础语法</div>
+      <div class="arrow">➜</div>
+      <div class="node oop">面向对象</div>
+      <div class="arrow">➜</div>
+      <div class="node advanced">进阶与生态</div>
+      <div class="arrow">➜</div>
+      <div class="node project">项目实战</div>
+    </div>
+    <div class="flow-text">
+      <ul>
+        <li>先打牢语法与数据结构，再学习面向对象思想。</li>
+        <li>通过标准库与第三方库，掌握 Python 在不同领域的常见用法。</li>
+        <li>最终用一个或多个完整项目，把知识串成“可落地的能力”。</li>
+      </ul>
+    </div>
+    <table>
+      <tr>
+        <th>阶段</th>
+        <th>核心目标</th>
+        <th>关键内容</th>
+      </tr>
+      <tr>
+        <td>基础语法</td>
+        <td>能写出正确的小脚本</td>
+        <td>变量、条件、循环、函数、列表/字典、文件读写</td>
+      </tr>
+      <tr>
+        <td>面向对象</td>
+        <td>能设计清晰的代码结构</td>
+        <td>类与对象、继承、多态、封装、魔术方法</td>
+      </tr>
+      <tr>
+        <td>进阶与生态</td>
+        <td>能读懂并使用主流库</td>
+        <td>标准库、虚拟环境、包管理、并发、网络、数据库</td>
+      </tr>
+      <tr>
+        <td>项目实战</td>
+        <td>能独立完成一个小项目</td>
+        <td>Web、脚本工具、数据处理、自动化、部署与调试</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 阶段一：基础语法 -->
+  <div id="basic" class="panel hidden">
+    <div class="diagram">
+      <div class="node basic">变量与类型</div>
+      <div class="arrow">➜</div>
+      <div class="node basic">条件与循环</div>
+      <div class="arrow">➜</div>
+      <div class="node basic">函数与模块</div>
+    </div>
+    <div class="flow-text">
+      <ul>
+        <li>理解数字、字符串、列表、字典等常用数据类型。</li>
+        <li>用 if / for / while 组合出清晰的控制流程。</li>
+        <li>把重复逻辑封装成函数，并学会拆分成模块。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 阶段二：面向对象 -->
+  <div id="oop" class="panel hidden">
+    <div class="diagram">
+      <div class="node oop">类与对象</div>
+      <div class="arrow">➜</div>
+      <div class="node oop">继承与多态</div>
+      <div class="arrow">➜</div>
+      <div class="node oop">设计更大程序</div>
+    </div>
+    <div class="flow-text">
+      <ul>
+        <li>用类来抽象“事物”，用对象来表示“具体实例”。</li>
+        <li>通过继承与多态，减少重复代码，让扩展更自然。</li>
+        <li>把功能拆成多个类与模块，形成可维护的结构。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 阶段三：进阶与生态 -->
+  <div id="advanced" class="panel hidden">
+    <div class="diagram">
+      <div class="node advanced">标准库</div>
+      <div class="arrow">➜</div>
+      <div class="node advanced">第三方库</div>
+      <div class="arrow">➜</div>
+      <div class="node advanced">并发与网络</div>
+    </div>
+    <div class="flow-text">
+      <ul>
+        <li>熟悉 os、pathlib、datetime、logging 等标准库。</li>
+        <li>学会用 pip / venv 管理依赖和虚拟环境。</li>
+        <li>了解多进程、多线程、协程，以及简单的网络编程。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 阶段四：项目实战 -->
+  <div id="project" class="panel hidden">
+    <div class="diagram">
+      <div class="node project">选定方向</div>
+      <div class="arrow">➜</div>
+      <div class="node project">拆分模块</div>
+      <div class="arrow">➜</div>
+      <div class="node project">编码与调试</div>
+      <div class="arrow">➜</div>
+      <div class="node project">部署与迭代</div>
+    </div>
+    <div class="flow-text">
+      <ul>
+        <li>选择一个方向：Web、自动化脚本、数据处理、爬虫等。</li>
+        <li>把需求拆成模块：数据层、业务层、接口层、工具层。</li>
+        <li>边写边调试，学会阅读报错信息与日志。</li>
+        <li>把项目部署到服务器或打包成可执行工具，并持续改进。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.btn');
+  const panels = document.querySelectorAll('.panel');
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const target = btn.getAttribute('data-target');
+      panels.forEach(p => p.classList.add('hidden'));
+      document.getElementById(target).classList.remove('hidden');
+    });
+  });
+</script>
+</body>
+</html>

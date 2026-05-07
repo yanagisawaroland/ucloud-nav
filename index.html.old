@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ucloud-nav HTML 导航</title>
+<style>
+body {
+    font-family: Arial, "Microsoft YaHei";
+    background: #f4f8fb;
+    text-align: center;
+    padding: 40px;
+}
+h1 {
+    font-size: 48px;
+}
+ul {
+    list-style: none;
+    padding: 0;
+}
+li {
+    margin: 25px 0;
+}
+a {
+    font-size: 32px;
+    color: #007acc;
+    text-decoration: none;
+    font-weight: bold;
+}
+a:hover {
+    color: #ff6600;
+}
+</style>
+</head>
+<body>
+
+<h1>ucloud-nav HTML 文件导航</h1>
+
+<ul>
+<li><a href="./k8s-arch-evolution.html">k8s-arch-evolution.html</a></li>
+<li><a href="./k8s-canary-flow.html">k8s-canary-flow.html</a></li>
+<li><a href="./k8s-cni.html">k8s-cni.html</a></li>
+<li><a href="./k8s-control-plane-watch-flow.html">k8s-control-plane-watch-flow.html</a></li>
+<li><a href="./k8s-control-plane.html">k8s-control-plane.html</a></li>
+<li><a href="./k8s-deploy-strategy.html">k8s-deploy-strategy.html</a></li>
+<li><a href="./k8s-etcd-watch.html">k8s-etcd-watch.html</a></li>
+<li><a href="./k8s-fault-propagation.html">k8s-fault-propagation.html</a></li>
+<li><a href="./k8s-hpa_flow_20260428_030623.html">k8s-hpa_flow_20260428_030623.html</a></li>
+<li><a href="./k8s-istio-flow.html">k8s-istio-flow.html</a></li>
+<li><a href="./k8s-istio-overview.html">k8s-istio-overview.html</a></li>
+<li><a href="./k8s-network-bindmap.html">k8s-network-bindmap.html</a></li>
+<li><a href="./k8s-networkpolicy.html">k8s-networkpolicy.html</a></li>
+<li><a href="./k8s-pod-lifecycle.html">k8s-pod-lifecycle.html</a></li>
+<li><a href="./k8s-scheduler-flow.html">k8s-scheduler-flow.html</a></li>
+<li><a href="./k8s-service-flow.html">k8s-service-flow.html</a></li>
+<li><a href="./k8s-service.html">k8s-service.html</a></li>
+<li><a href="./k8s_operator_20260429_172200.html">k8s_operator_20260429_172200.html</a></li>
+<li><a href="./k8s_rbac2_20260428_162406.html">k8s_rbac2_20260428_162406.html</a></li>
+<li><a href="./k8s_rbac_20260428_161816.html">k8s_rbac_20260428_161816.html</a></li>
+<li><a href="./k8s_resources_qos_20260428_162951.html">k8s_resources_qos_20260428_162951.html</a></li>
+<li><a href="./k8s_taint_toleration_20260429_172957.html">k8s_taint_toleration_20260429_172957.html</a></li>
+<li><a href="./memo.html">memo.html</a></li>
+<li><a href="./mysql-cluster-ultimate-fixed.html">mysql-cluster-ultimate-fixed.html</a></li>
+<li><a href="./mysql-cluster-ultimate.html">mysql-cluster-ultimate.html</a></li>
+<li><a href="./mysql-cluster-visualization.html">mysql-cluster-visualization.html</a></li>
+<li><a href="./mysql-clusters-diagram.html">mysql-clusters-diagram.html</a></li>
+<li><a href="./priority-preemption.html">priority-preemption.html</a></li>
+<li><a href="./pv-pvc-flow.html">pv-pvc-flow.html</a></li>
+<li><a href="./pxc-mysql-cluster.html">pxc-mysql-cluster.html</a></li>
+<li><a href="./pxc_cluster_dynamic.html">pxc_cluster_dynamic.html</a></li>
+<li><a href="./pxc_vs_other_mysql_cluster.html">pxc_vs_other_mysql_cluster.html</a></li>
+<li><a href="./vpa-recommendation.html">vpa-recommendation.html</a></li>
+<li><a href="./xinjiang_complete.html">xinjiang_complete.html</a></li>
+<li><a href="./yulin_economy_20260428_030035.html">yulin_economy_20260428_030035.html</a></li>
+</ul>
+
+</body>
+</html>

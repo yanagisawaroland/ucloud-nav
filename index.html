@@ -1,74 +1,106 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DevOps 导航 · ucloud-nav</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap');
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  body{
-    background:#eef2f7;
-    font-family:'Noto Sans SC',sans-serif;
-    min-height:100vh;
-    display:flex; flex-direction:column;
-    align-items:center; padding:60px 24px 80px;
-  }
-  h1{ font-size:clamp(2rem,5vw,3.2rem); font-weight:900; color:#18263a;
-      letter-spacing:-1px; margin-bottom:10px; text-align:center; }
-  h1 span{ color:#7c3aed; }
-  .sub{ font-family:'JetBrains Mono',monospace; font-size:1rem;
-        color:#5a7090; margin-bottom:52px; text-align:center; }
-  ul{ list-style:none; width:100%; max-width:700px;
-      display:flex; flex-direction:column; gap:20px; }
-  li a{
-    display:block; background:#fff;
-    border:2px solid #cdd8e8; border-radius:14px;
-    padding:26px 36px;
-    font-size:clamp(1.1rem,3vw,1.4rem); font-weight:700;
-    color:#2563eb; text-decoration:none;
-    line-height:1.5; letter-spacing:0.2px;
-    transition:all .2s;
-    box-shadow:0 2px 8px rgba(0,0,0,0.05);
-    word-break:break-all;
-  }
-  li a:hover{
-    border-color:#7c3aed; background:#f5f0ff;
-    transform:translateY(-3px);
-    box-shadow:0 8px 28px rgba(124,58,237,.14);
-    color:#7c3aed;
-  }
-  footer{ margin-top:60px; font-size:.75rem; color:#b0bec5;
-          font-family:'JetBrains Mono',monospace; text-align:center; }
-</style>
+  <meta charset="UTF-8">
+  <title>ucloud-nav HTML 索引</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color: #111827;
+    }
+    .wrapper {
+      max-width: 900px;
+      margin: 40px auto 60px;
+      padding: 0 16px;
+      text-align: left;
+    }
+    h1 {
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 28px;
+    }
+    a {
+      font-size: 22px;
+      display: block;
+      margin: 18px 0;
+      line-height: 1.6;
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .note {
+      margin-top: 30px;
+      font-size: 13px;
+      color: #6b7280;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <h1>DevOps <span>导航</span></h1>
-  <p class="sub">ucloud-nav · http://42.240.145.68:7777</p>
-  <ul>
-    <li><a href="http://42.240.145.68:7777/k8s-arch-evolution.html">📄 k8s-arch-evolution.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-canary-flow.html">📄 k8s-canary-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-cni.html">📄 k8s-cni.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-deploy-strategy.html">📄 k8s-deploy-strategy.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-devops-flow.html">📄 k8s-devops-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-etcd-data-flow.html">📄 k8s-etcd-data-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-etcd-watch.html">📄 k8s-etcd-watch.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-fault-propagation.html">📄 k8s-fault-propagation.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-hpa_flow_20260428_030623.html">📄 k8s-hpa_flow_20260428_030623.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-istio-flow.html">📄 k8s-istio-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-istio-overview.html">📄 k8s-istio-overview.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-networkpolicy.html">📄 k8s-networkpolicy.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-pod-lifecycle.html">📄 k8s-pod-lifecycle.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-scheduler-flow.html">📄 k8s-scheduler-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s-service.html">📄 k8s-service.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s_devops_flow.html">📄 k8s_devops_flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s_rbac2_20260428_162406.html">📄 k8s_rbac2_20260428_162406.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s_rbac_20260428_161816.html">📄 k8s_rbac_20260428_161816.html</a></li>
-    <li><a href="http://42.240.145.68:7777/k8s_resources_qos_20260428_162951.html">📄 k8s_resources_qos_20260428_162951.html</a></li>
-    <li><a href="http://42.240.145.68:7777/memo.html">📄 memo.html</a></li>
-    <li><a href="http://42.240.145.68:7777/pv-pvc-flow.html">📄 pv-pvc-flow.html</a></li>
-    <li><a href="http://42.240.145.68:7777/yulin_economy_20260428_030035.html">📄 yulin_economy_20260428_030035.html</a></li>
-  </ul>
-  <footer>Generated 2026-04-29 01:29:53 · Kubernetes DevOps Lab</footer>
+<div class="wrapper">
+  <h1>ucloud-nav HTML 索引</h1>
+  <div class="subtitle">当前目录下所有 .html 文件（相对路径，点击即可访问）</div>
+  <a href="202604252049_k8s-arch-evolution.html">202604252049_k8s-arch-evolution.html</a>
+  <a href="202604252049_k8s-canary-flow.html">202604252049_k8s-canary-flow.html</a>
+  <a href="202604252049_k8s-cni.html">202604252049_k8s-cni.html</a>
+  <a href="202604252049_k8s-fault-propagation.html">202604252049_k8s-fault-propagation.html</a>
+  <a href="202604252049_k8s-scheduler-flow.html">202604252049_k8s-scheduler-flow.html</a>
+  <a href="202604252312_k8s-istio-overview.html">202604252312_k8s-istio-overview.html</a>
+  <a href="202604260446_k8s-pod-lifecycle.html">202604260446_k8s-pod-lifecycle.html</a>
+  <a href="202604260529_memo.html">202604260529_memo.html</a>
+  <a href="202604261613_k8s-service.html">202604261613_k8s-service.html</a>
+  <a href="202604270941_k8s-deploy-strategy.html">202604270941_k8s-deploy-strategy.html</a>
+  <a href="202604271844_k8s-etcd-watch.html">202604271844_k8s-etcd-watch.html</a>
+  <a href="202604280300_yulin_economy_20260428_030035.html">202604280300_yulin_economy_20260428_030035.html</a>
+  <a href="202604280306_k8s-hpa_flow_20260428_030623.html">202604280306_k8s-hpa_flow_20260428_030623.html</a>
+  <a href="202604281618_k8s_rbac_20260428_161816.html">202604281618_k8s_rbac_20260428_161816.html</a>
+  <a href="202604281624_k8s_rbac2_20260428_162406.html">202604281624_k8s_rbac2_20260428_162406.html</a>
+  <a href="202604281629_k8s_resources_qos_20260428_162951.html">202604281629_k8s_resources_qos_20260428_162951.html</a>
+  <a href="202604281636_pv-pvc-flow.html">202604281636_pv-pvc-flow.html</a>
+  <a href="202604290129_k8s-networkpolicy.html">202604290129_k8s-networkpolicy.html</a>
+  <a href="202604290231_k8s-istio-flow.html">202604290231_k8s-istio-flow.html</a>
+  <a href="202604290247_k8s-service-flow.html">202604290247_k8s-service-flow.html</a>
+  <a href="202604290610_k8s-network-bindmap.html">202604290610_k8s-network-bindmap.html</a>
+  <a href="202604290631_k8s-control-plane.html">202604290631_k8s-control-plane.html</a>
+  <a href="202604290646_k8s-control-plane-watch-flow.html">202604290646_k8s-control-plane-watch-flow.html</a>
+  <a href="202604291722_k8s_operator_20260429_172200.html">202604291722_k8s_operator_20260429_172200.html</a>
+  <a href="202604291729_k8s_taint_toleration_20260429_172957.html">202604291729_k8s_taint_toleration_20260429_172957.html</a>
+  <a href="202605020225_priority-preemption.html">202605020225_priority-preemption.html</a>
+  <a href="202605020310_vpa-recommendation.html">202605020310_vpa-recommendation.html</a>
+  <a href="202605021949_xinjiang_complete.html">202605021949_xinjiang_complete.html</a>
+  <a href="202605050053_pxc-mysql-cluster.html">202605050053_pxc-mysql-cluster.html</a>
+  <a href="202605050100_mysql-clusters-diagram.html">202605050100_mysql-clusters-diagram.html</a>
+  <a href="202605050106_mysql-cluster-ultimate.html">202605050106_mysql-cluster-ultimate.html</a>
+  <a href="202605050109_pxc_vs_other_mysql_cluster.html">202605050109_pxc_vs_other_mysql_cluster.html</a>
+  <a href="202605050112_mysql-cluster-ultimate-fixed.html">202605050112_mysql-cluster-ultimate-fixed.html</a>
+  <a href="202605050115_pxc_cluster_dynamic.html">202605050115_pxc_cluster_dynamic.html</a>
+  <a href="202605050118_mysql-cluster-visualization.html">202605050118_mysql-cluster-visualization.html</a>
+  <a href="202605050200-python-learning-roadmap.html">202605050200-python-learning-roadmap.html</a>
+  <a href="202605050202-python-learning-flow.html">202605050202-python-learning-flow.html</a>
+  <a href="20260505040256-istio-observability.html">20260505040256-istio-observability.html</a>
+  <a href="20260505041423-istio-observability.html">20260505041423-istio-observability.html</a>
+  <a href="20260505043404-istio-observability.html">20260505043404-istio-observability.html</a>
+  <a href="20260505050535-velero-backup-restore.html">20260505050535-velero-backup-restore.html</a>
+  <a href="202605050514-velero.html">202605050514-velero.html</a>
+  <a href="202605050516-k8s-velero-guide.html">202605050516-k8s-velero-guide.html</a>
+  <a href="202605052144-ebpf-otel-flow.html">202605052144-ebpf-otel-flow.html</a>
+  <a href="20260506021850-future-mesh-ambient-otel.html">20260506021850-future-mesh-ambient-otel.html</a>
+  <a href="20260506021850-istio-vs-linkerd.html">20260506021850-istio-vs-linkerd.html</a>
+  <a href="20260506022114-future-mesh-ambient-otel.html">20260506022114-future-mesh-ambient-otel.html</a>
+  <a href="20260506022114-istio-vs-linkerd.html">20260506022114-istio-vs-linkerd.html</a>
+  <a href="20260506022552-future-mesh-ambient-otel-steps.html">20260506022552-future-mesh-ambient-otel-steps.html</a>
+  <a href="20260506022552-istio-vs-linkerd-steps.html">20260506022552-istio-vs-linkerd-steps.html</a>
+  <div class="note">文件名以日期时间开头，便于按时间排序与回溯。</div>
+</div>
 </body>
 </html>

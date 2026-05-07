@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s VPA 垂直扩缩容推荐流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#f8fafc;
+  font-family:'Inter','SF Pro Display','PingFang SC','Microsoft YaHei',sans-serif;
+  min-height:100vh;
+  display:flex;justify-content:center;
+  padding:24px;
+  color:#334155
+}
+.container{
+  max-width:980px;width:100%;
+  background:#fff;
+  border-radius:14px;
+  border:1px solid #e2e8f0;
+  box-shadow:0 1px 3px rgba(0,0,0,.04),0 4px 20px rgba(0,0,0,.05);
+  padding:32px 28px 28px
+}
+.header{margin-bottom:28px}
+h1{
+  text-align:center;
+  color:#0f172a;
+  font-size:24px;font-weight:700;
+  letter-spacing:-.3px
+}
+.subtitle{
+  text-align:center;color:#64748b;
+  font-size:14px;margin-top:6px;line-height:1.5
+}
+.flowchart-wrap{
+  position:relative;
+  width:100%;max-width:940px;
+  height:730px;
+  margin:0 auto;
+  overflow:hidden;
+  border-radius:10px;
+  background:linear-gradient(135deg,#fafbff 0%,#f4f6fb 100%);
+  border:1px solid #e8ecf3
+}
+/* Node cards */
+.node{
+  position:absolute;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;
+  color:#64748b;
+  background:#fff;
+  border:1.5px solid #e2e8f0;
+  border-radius:9px;
+  padding:0 14px;
+  white-space:nowrap;
+  z-index:2;
+  user-select:none;
+  transition:all .35s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 1px 3px rgba(0,0,0,.03);
+  letter-spacing:-.1px
+}
+.node.completed{
+  color:#166534;
+  background:#f0fdf4;
+  border-color:#86efac;
+  box-shadow:0 1px 4px rgba(34,197,94,.12)
+}
+.node.active{
+  color:#1e3a8a;
+  background:#eff6ff;
+  border-color:#93c5fd;
+  box-shadow:0 0 0 3px rgba(59,130,246,.12),0 2px 12px rgba(59,130,246,.1);
+  transform:scale(1.05)
+}
+.node.alt-active{
+  color:#9a3412;
+  background:#fff7ed;
+  border-color:#fdba74;
+  box-shadow:0 0 0 3px rgba(249,115,22,.12),0 2px 12px rgba(249,115,22,.1);
+  transform:scale(1.05)
+}
+.node.success-active{
+  color:#065f46;
+  background:#ecfdf5;
+  border-color:#6ee7b7;
+  box-shadow:0 0 0 3px rgba(16,185,129,.12),0 2px 12px rgba(16,185,129,.1);
+  transform:scale(1.05)
+}
+.node.dimmed{color:#94a3b8;background:#f8fafc;border-color:#e2e8f0;opacity:.6}
+.node .node-icon{font-size:16px;margin-right:6px}
+/* diamond decision */
+.node.diamond{
+  width:92px;height:92px;padding:0;
+  border-radius:7px;
+  transform:rotate(45deg)
+}
+.node.diamond .inner{
+  transform:rotate(-45deg);
+  display:flex;flex-direction:column;align-items:center;
+  font-size:12px;line-height:1.25
+}
+.node.diamond.completed{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+.node.diamond.alt-active{background:#fffbeb;border-color:#f59e0b}
+.node.diamond .inner .icon{font-size:20px;margin-bottom:1px}
+/* branch badges */
+.badge{
+  position:absolute;z-index:3;
+  font-size:12px;font-weight:700;
+  padding:3px 12px;border-radius:20px;
+  opacity:.35;transition:opacity .35s ease-in-out
+}
+.badge.on{opacity:1}
+.badge.yes{color:#16a34a;background:#dcfce7}
+.badge.no{color:#dc2626;background:#fef2f2}
+/* SVG layer */
+.svg-layer{
+  position:absolute;top:0;left:0;
+  width:100%;height:100%;
+  z-index:1;pointer-events:none
+}
+.line{
+  stroke:#cbd5e1;stroke-width:2;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;
+  transition:stroke .35s,stroke-width .25s
+}
+.line.done{stroke:#86efac;stroke-width:2.5}
+.line.on{stroke:#3b82f6;stroke-width:3}
+.line.alt-on{stroke:#f97316;stroke-width:3}
+.line.ok-on{stroke:#10b981;stroke-width:3}
+/* Detail panel */
+.detail-panel{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  padding:14px 18px;
+  margin-top:16px;
+  min-height:56px;
+  transition:all .3s ease-in-out
+}
+.detail-panel .step-num{
+  display:inline-block;
+  background:#e2e8f0;
+  color:#475569;
+  font-size:12px;font-weight:700;
+  padding:2px 10px;border-radius:10px;
+  margin-right:10px
+}
+.detail-panel .step-desc{font-size:14px;color:#475569;line-height:1.65}
+.detail-panel .step-detail{margin-top:4px;font-size:12px;color:#94a3b8;line-height:1.55}
+/* shadcn/ui buttons */
+.controls{
+  display:flex;justify-content:center;align-items:center;
+  gap:8px;margin:20px 0 12px;flex-wrap:wrap
+}
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:8px 15px;
+  border-radius:7px;
+  font-size:13px;font-weight:600;
+  border:1px solid #e2e8f0;
+  background:#fff;
+  color:#334155;
+  cursor:pointer;
+  font-family:inherit;
+  transition:all .15s ease-in-out;
+  letter-spacing:-.1px;
+  box-shadow:0 1px 2px rgba(0,0,0,.03)
+}
+.btn:hover{background:#f1f5f9;border-color:#cbd5e1}
+.btn:active{transform:scale(.96)}
+.btn:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}
+.btn.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+.btn.primary:hover{background:#1d4ed8;border-color:#1d4ed8}
+.btn.success{background:#16a34a;color:#fff;border-color:#16a34a}
+.btn.success:hover{background:#15803d;border-color:#15803d}
+.btn.destructive{background:#ef4444;color:#fff;border-color:#ef4444}
+.btn.destructive:hover{background:#dc2626;border-color:#dc2626}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none}
+.btn.ghost:hover{background:#f1f5f9}
+/* speed */
+.speed-ctl{display:flex;align-items:center;gap:6px;margin-left:6px}
+.speed-ctl span{font-size:12px;color:#94a3b8}
+.speed-ctl input[type="range"]{
+  width:80px;height:4px;
+  -webkit-appearance:none;appearance:none;
+  background:#e2e8f0;border-radius:3px;outline:none
+}
+.speed-ctl input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:#3b82f6;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.15)
+}
+/* legend */
+.legend-row{
+  display:flex;justify-content:center;gap:18px;
+  margin-top:8px;font-size:12px;color:#94a3b8
+}
+.legend-row span{display:flex;align-items:center;gap:5px}
+.ld{width:13px;height:13px;border-radius:4px;border:1.5px solid}
+.ld.def{border-color:#e2e8f0;background:#fff}
+.ld.done{border-color:#86efac;background:#f0fdf4}
+.ld.curr{border-color:#93c5fd;background:#eff6ff}
+.ld.warn{border-color:#fdba74;background:#fff7ed}
+@media(max-width:760px){
+  .flowchart-wrap{height:600px}
+  .node{font-size:11px;padding:0 8px}
+  .container{padding:16px}h1{font-size:20px}
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Kubernetes VPA 垂直扩缩容推荐流程</h1>
+    <p class="subtitle">Vertical Pod Autoscaler — Recommender → Updater → Admission Controller 完整工作链路</p>
+  </div>
+
+  <div class="flowchart-wrap" id="fc">
+    <div class="node" id="n1" style="left:40px;top:24px;width:120px;height:46px">
+      <span class="node-icon">📦</span>Pod 运行中
+    </div>
+    <div class="node" id="n2" style="left:250px;top:24px;width:155px;height:46px">
+      <span class="node-icon">📊</span>Metrics Server 采集
+    </div>
+    <div class="node" id="n3" style="left:495px;top:24px;width:170px;height:46px">
+      <span class="node-icon">🧠</span>VPA Recommender 分析
+    </div>
+    <div class="node" id="n4" style="left:510px;top:135px;width:155px;height:46px">
+      计算推荐资源值
+    </div>
+    <div class="node" id="n5" style="left:505px;top:245px;width:170px;height:46px">
+      📝 更新 VPA Status
+    </div>
+    <div class="node" id="n6" style="left:505px;top:355px;width:170px;height:46px">
+      🔍 Updater 对比差异
+    </div>
+    <div class="node diamond" id="n7" style="left:525px;top:465px;">
+      <div class="inner"><span class="icon">⚖️</span>需要<br>调整?</div>
+    </div>
+    <div class="node" id="n8" style="left:725px;top:485px;width:130px;height:46px">
+      ✅ 保持当前
+    </div>
+    <div class="node" id="n9" style="left:500px;top:590px;width:185px;height:46px">
+      🔄 驱逐 Pod 并重建
+    </div>
+    <div class="node" id="n10" style="left:500px;top:670px;width:185px;height:46px">
+      🎯 Admission Controller 注入
+    </div>
+    <div class="badge yes" id="badgeA" style="left:642px;top:479px;">否</div>
+    <div class="badge no"  id="badgeB" style="left:595px;top:533px;">是</div>
+    <svg class="svg-layer" viewBox="0 0 940 750" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="am"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9 Z" fill="#cbd5e1"/></marker>
+        <marker id="am-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9 Z"/></marker>
+        <marker id="am-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9 Z"/></marker>
+        <marker id="am-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9 Z"/></marker>
+        <marker id="am-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9 Z"/></marker>
+      </defs>
+      <path class="line" id="e1" d="M160,47 L250,47" marker-end="url(#am)"/>
+      <path class="line" id="e2" d="M405,47 L495,47" marker-end="url(#am)"/>
+      <path class="line" id="e3" d="M580,70 L590,102 L590,135" marker-end="url(#am)"/>
+      <path class="line" id="e4" d="M588,181 L588,245" marker-end="url(#am)"/>
+      <path class="line" id="e5" d="M590,291 L590,355" marker-end="url(#am)"/>
+      <path class="line" id="e6" d="M590,401 L590,465" marker-end="url(#am)"/>
+      <path class="line" id="e7" d="M617,511 L725,508" marker-end="url(#am)"/>
+      <path class="line" id="e8" d="M571,557 L575,590" marker-end="url(#am)"/>
+      <path class="line" id="e9" d="M593,636 L593,670" marker-end="url(#am)"/>
+    </svg>
+  </div>
+
+  <div class="detail-panel" id="detail">
+    <span class="step-num" id="stepNum">-</span>
+    <span class="step-desc" id="stepDesc">点击 ▶ 播放 查看 VPA 垂直扩缩容推荐完整流程</span>
+    <div class="step-detail" id="stepDetail">
+      VPA 由三个组件协同工作：Recommender（分析历史指标给出推荐值）、Updater（驱逐需要调整的 Pod）、Admission Controller（Pod 重建时注入推荐资源）
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn ghost" id="btnReset" title="重置 (R)">⟲ 重置</button>
+    <button class="btn" id="btnPrev" title="上一步 (←)">◀ 上一步</button>
+    <button class="btn primary" id="btnPlay" title="播放/暂停 (Space)">▶ 播放</button>
+    <button class="btn" id="btnNext" title="下一步 (→)">下一步 ▶</button>
+    <button class="btn success" id="btnAuto" title="循环演示">↻ 自动</button>
+    <div class="speed-ctl">
+      <span>速度</span>
+      <input type="range" id="spd" min="1" max="5" value="3" step="1">
+      <span id="spdLbl" style="min-width:24px">3x</span>
+    </div>
+  </div>
+  <div class="legend-row">
+    <span><span class="ld def"></span> 未开始</span>
+    <span><span class="ld done"></span> 已完成</span>
+    <span><span class="ld curr"></span> 当前步</span>
+    <span><span class="ld warn"></span> 调整路径</span>
+  </div>
+</div>
+
+<script>
+(function(){"use strict"
+var N=["n1","n2","n3","n4","n5","n6","n7","n8","n9","n10"]
+var E=["e1","e2","e3","e4","e5","e6","e7","e8","e9"]
+var ne={},ee={}
+N.forEach(function(i){ne[i]=document.getElementById(i)})
+E.forEach(function(i){ee[i]=document.getElementById(i)})
+
+var S=[
+{a:[],ae:null,alt:false,ok:false,c:[],ce:[],desc:"初始状态",detail:"VPA（Vertical Pod Autoscaler）是 K8s 的垂直扩缩容组件。它由 Recommender、Updater、Admission Controller 三部分组成，自动为 Pod 推荐并应用最佳 CPU/Memory 资源值。"},
+{a:["n1"],ae:null,alt:false,ok:false,c:[],ce:[],desc:"Pod 已在集群中运行，关联了 VPA 资源对象",detail:"用户在集群中创建了 VPA CR（Custom Resource），指定了 updateMode（Auto/Off/Initial/Recreate）和目标 Pod 的 selector。Pod 正常启动运行。"},
+{a:["n2"],ae:"e1",alt:false,ok:false,c:["n1"],ce:[],desc:"Metrics Server 持续采集 Pod 的 CPU / Memory 使用数据",detail:"Metrics Server 是 K8s 核心指标管道，每隔 15 秒采集一次各 Pod 的 CPU 和 Memory 实际使用量，作为 VPA Recommender 分析的原始数据来源。"},
+{a:["n3"],ae:"e2",alt:false,ok:false,c:["n1","n2"],ce:["e1"],desc:"VPA Recommender 读取历史指标数据，进行统计建模分析",detail:"Recommender 从 Metrics Server 拉取 Pod 的历史资源使用数据（默认回顾 8 天），结合底层容器的 OOM 事件、资源限流记录，使用百分位算法（默认 P90）计算推荐值。"},
+{a:["n4"],ae:"e3",alt:false,ok:false,c:["n1","n2","n3"],ce:["e1","e2"],desc:"计算最佳 CPU Request/Limit 和 Memory Request/Limit 推荐值",detail:"Recommender 输出三组值：LowerBound（下限保护）、Target（目标推荐值，默认使用 P90）、UpperBound（上限保护）。Target 是 VPA Updater 实际用来决策是否调整的基准。"},
+{a:["n5"],ae:"e4",alt:false,ok:false,c:["n1","n2","n3","n4"],ce:["e1","e2","e3"],desc:"推荐结果写入 VPA 对象的 status.recommendation 字段",detail:"Recommender 将计算好的推荐值写入 VPA CR 的 Status 子资源中。此时 VPA 对象有了 recommendation 数据，但 Pod 本身的 resources 尚未被修改。"},
+{a:["n6"],ae:"e5",alt:false,ok:false,c:["n1","n2","n3","n4","n5"],ce:["e1","e2","e3","e4"],desc:"VPA Updater 定期对比 Pod 当前资源与推荐值的差异",detail:"Updater 每隔 1 分钟轮询 VPA 对象的推荐值，与 Pod 当前的 resources.requests/limits 逐项对比。如果差异超过阈值（默认 10%），则触发调整流程。"},
+{a:["n7"],ae:"e6",alt:false,ok:false,c:["n1","n2","n3","n4","n5","n6"],ce:["e1","e2","e3","e4","e5"],desc:"判断：当前 Pod 资源是否需要调整？",detail:"Updater 检查：1) 当前 resources 是否在 [LowerBound, UpperBound] 范围内；2) 与 Target 的偏差是否超过 10%。任一不满足则判定需要调整。"},
+{a:["n8"],ae:"e7",alt:false,ok:false,c:["n1","n2","n3","n4","n5","n6","n7"],ce:["e1","e2","e3","e4","e5","e6"],desc:"「否」— 资源已接近最优值，保持当前配置不变",detail:"Pod 当前的 resources 在推荐范围内且偏差小于阈值，无需调整。Updater 跳过此次检查，等待下一轮轮询。这是 VPA 稳定运行的理想状态。"},
+{a:["n9"],ae:"e8",alt:true,ok:false,c:["n1","n2","n3","n4","n5","n6","n7"],ce:["e1","e2","e3","e4","e5","e6"],desc:"「是」— 资源偏差过大，Updater 驱逐 Pod 触发重建",detail:"Updater 发送 Eviction API 请求驱逐 Pod。驱逐遵守 PDB（PodDisruptionBudget）约束，不会一次性驱逐超过允许数量的 Pod。VPA updateMode 决定驱逐策略：Auto（自动驱逐）、Off（仅推荐不执行）。"},
+{a:["n10"],ae:"e9",alt:true,ok:true,c:["n1","n2","n3","n4","n5","n6","n7","n9"],ce:["e1","e2","e3","e4","e5","e6","e8"],desc:"Pod 重建时，VPA Admission Controller 拦截并注入推荐资源值",detail:"Admission Controller 作为 Mutating Webhook 拦截 Pod Create 请求。它读取对应 VPA 对象的 recommendation.target 值，修改 Pod Spec 中的 resources.requests/limits，确保新 Pod 以最佳资源配比启动运行。"}
+]
+
+var T=S.length-1,cur=0,play=false,auto=false,timer=null
+
+function apply(i){
+  var s=S[i];if(!s)return
+  N.forEach(function(id){
+    var e=ne[id];e.className="node"
+    if(id==="n7")e.classList.add("diamond")
+    if(s.c.indexOf(id)>=0)e.classList.add("completed")
+    else if(s.a.indexOf(id)>=0){
+      if(s.ok&&id==="n10")e.classList.add("success-active")
+      else if(s.alt&&!s.ok&&id!=="n8")e.classList.add("alt-active")
+      else if(id==="n8")e.classList.add("success-active")
+      else e.classList.add("active")
+    }else if(id==="n8")e.classList.add("dimmed")
+  })
+  E.forEach(function(id){
+    var e=ee[id];e.className="line"
+    if(s.ce.indexOf(id)>=0)e.classList.add("done")
+    else if(s.ae===id){
+      if(s.ok)e.classList.add("ok-on")
+      else if(s.alt)e.classList.add("alt-on")
+      else e.classList.add("on")
+    }
+  })
+  var ba=document.getElementById("badgeA"),bb=document.getElementById("badgeB")
+  if(i===8){ba.classList.add("on");bb.classList.remove("on")}
+  else if(i>=9){ba.classList.remove("on");bb.classList.add("on")}
+  else{ba.classList.remove("on");bb.classList.remove("on")}
+
+  document.getElementById("stepNum").textContent=i+"/"+T
+  document.getElementById("stepDesc").textContent=s.desc
+  document.getElementById("stepDetail").textContent=s.detail||""
+}
+function go(i){if(i<0||i>T)return;cur=i;apply(i)}
+function next(){if(cur<T)go(cur+1);else if(auto)go(0);else stop()}
+function prev(){if(cur>0)go(cur-1)}
+function reset(){stop();auto=false;document.getElementById("btnAuto").textContent="↻ 自动";document.getElementById("btnAuto").className="btn success";go(0)}
+function start(){if(timer)clearInterval(timer);play=true;var d=Math.max(350,2200-(parseInt(document.getElementById("spd").value)-1)*350);timer=setInterval(next,d);document.getElementById("btnPlay").textContent="⏸ 暂停";document.getElementById("btnPlay").className="btn destructive"}
+function stop(){if(timer){clearInterval(timer);timer=null}play=false;document.getElementById("btnPlay").textContent="▶ 播放";document.getElementById("btnPlay").className="btn primary"}
+function toggle(){if(play)stop();else{if(cur>=T)go(0);start()}}
+function toggleAuto(){auto=!auto;document.getElementById("btnAuto").textContent=auto?"↻ 自动(开)":"↻ 自动";document.getElementById("btnAuto").className=auto?"btn destructive":"btn success";if(auto&&!play){if(cur>=T)go(0);start()}}
+document.getElementById("spd").addEventListener("input",function(){document.getElementById("spdLbl").textContent=this.value+"x";if(play){stop();start()}})
+document.addEventListener("keydown",function(e){
+  if(e.key===" "||e.key==="Space"){e.preventDefault();toggle()}
+  else if(e.key==="ArrowRight"){stop();next()}
+  else if(e.key==="ArrowLeft"){stop();prev()}
+  else if(e.key==="r"||e.key==="R")reset()
+})
+document.getElementById("btnPlay").addEventListener("click",toggle)
+document.getElementById("btnNext").addEventListener("click",function(){stop();next()})
+document.getElementById("btnPrev").addEventListener("click",function(){stop();prev()})
+document.getElementById("btnReset").addEventListener("click",reset)
+document.getElementById("btnAuto").addEventListener("click",toggleAuto)
+go(0)
+})()
+</script>
+</body>
+</html>

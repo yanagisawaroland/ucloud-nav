@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PXC MySQL 集群与其他 MySQL 集群逻辑关系动态流程图</title>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Microsoft YaHei", Arial, sans-serif;
+    }
+    body {
+        background-color: #f5f7fa;
+        color: #333;
+        padding: 20px;
+    }
+    .page-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    .page-title {
+        text-align: center;
+        font-size: 32px;
+        color: #2c3e50;
+        margin: 20px 0 30px;
+        font-weight: bold;
+    }
+    .desc-box {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        line-height: 1.8;
+        font-size: 16px;
+    }
+    .control-panel {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    .control-btn {
+        padding: 12px 30px;
+        margin: 0 10px;
+        font-size: 16px;
+        border: none;
+        border-radius: 6px;
+        background-color: #428bca;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .control-btn:hover {
+        background-color: #3071a9;
+    }
+    .flow-box {
+        width: 100%;
+        height: 720px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.06);
+        position: relative;
+        overflow: hidden;
+    }
+    .node {
+        position: absolute;
+        width: 180px;
+        padding: 16px 10px;
+        background: #fff;
+        border: 2px solid #428bca;
+        border-radius: 10px;
+        text-align: center;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        transition: all 0.6s ease;
+        z-index: 10;
+    }
+    .node h3 {
+        font-size: 16px;
+        margin-bottom: 6px;
+        color: #222;
+    }
+    .node p {
+        font-size: 12px;
+        color: #666;
+    }
+    .line {
+        position: absolute;
+        height: 2px;
+        background-color: #e74c3c;
+        transform-origin: left center;
+        z-index: 5;
+    }
+</style>
+</head>
+<body>
+<div class="page-container">
+    <h1 class="page-title">Percona XtraDB Cluster（PXC）与 MySQL 集群逻辑关系及流程动态图</h1>
+
+    <div class="desc-box">
+        <strong>说明：</strong> PXC 是基于 Galera 实现的<strong>多主同步</strong> MySQL 高可用集群，所有节点均可读写；
+        与传统主从、MGR 集群在复制模式、可用性、性能、应用场景上有明显区别。
+        本图展示请求流程、内部同步、与其他集群关系，支持动态演示。
+    </div>
+
+    <div class="control-panel">
+        <button class="control-btn" onclick="initDraw()">重置视图</button>
+        <button class="control-btn" onclick="startPlay()">开始播放流程</button>
+        <button class="control-btn" onclick="showAllRelation()">显示完整关系</button>
+    </div>
+
+    <div class="flow-box" id="flowCanvas"></div>
+</div>
+
+<script>
+    const canvas = document.getElementById('flowCanvas');
+
+    // 节点数据
+    const nodes = [
+        { id: 1, name: '应用客户端', info: 'App/Client', x: 610, y: 60, color: '#2ecc71' },
+        { id: 2, name: 'VIP/负载均衡', info: 'LB/VIP', x: 610, y: 150, color: '#428bca' },
+        { id: 3, name: 'PXC Node 1', info: '读写节点', x: 320, y: 260, color: '#428bca' },
+        { id: 4, name: 'PXC Node 2', info: '读写节点', x: 610, y: 260, color: '#428bca' },
+        { id: 5, name: 'PXC Node 3', info: '读写节点', x: 900, y: 260, color: '#428bca' },
+        { id: 6, name: 'Galera 同步层', info: '强同步复制', x: 610, y: 380, color: '#f39c12' },
+        { id: 7, name: '数据强一致', info: '所有节点数据相同', x: 610, y: 470, color: '#2ecc71' },
+        { id: 8, name: '传统主从复制', info: '异步/半同步', x: 260, y: 560, color: '#e74c3c' },
+        { id: 9, name: 'MySQL MGR 集群', info: '组复制', x: 610, y: 560, color: '#e74c3c' },
+        { id: 10, name: '业务高可用架构', info: '支撑上层系统', x: 960, y: 560, color: '#2ecc71' }
+    ];
+
+    // 连线关系
+    const lines = [
+        [1,2], [2,3], [2,4], [2,5],
+        [3,6], [4,6], [5,6], [6,7],
+        [7,8], [7,9], [7,10]
+    ];
+
+    // 初始化绘制
+    function initDraw() {
+        canvas.innerHTML = '';
+        drawNodes();
+        drawLines();
+    }
+
+    // 绘制节点
+    function drawNodes() {
+        nodes.forEach(node => {
+            let div = document.createElement('div');
+            div.className = 'node';
+            div.style.left = node.x + 'px';
+            div.style.top = node.y + 'px';
+            div.style.borderColor = node.color;
+            div.innerHTML = `<h3>${node.name}</h3><p>${node.info}</p>`;
+            canvas.appendChild(div);
+        });
+    }
+
+    // 绘制连线
+    function drawLines() {
+        lines.forEach(([fromId, toId]) => {
+            let from = nodes.find(n => n.id === fromId);
+            let to = nodes.find(n => n.id === toId);
+            let fx = from.x + 90;
+            let fy = from.y + 45;
+            let tx = to.x + 90;
+            let ty = to.y + 10;
+            let dx = tx - fx;
+            let dy = ty - fy;
+            let len = Math.hypot(dx, dy);
+            let ang = Math.atan2(dy, dx) * 180 / Math.PI;
+
+            let line = document.createElement('div');
+            line.className = 'line';
+            line.style.width = len + 'px';
+            line.style.left = fx + 'px';
+            line.style.top = fy + 'px';
+            line.style.transform = `rotate(${ang}deg)`;
+            canvas.appendChild(line);
+        });
+    }
+
+    // 播放流程动画
+    function startPlay() {
+        initDraw();
+        let items = canvas.querySelectorAll('.node');
+        let i = 0;
+        let timer = setInterval(() => {
+            if (i >= items.length) {
+                clearInterval(timer);
+                return;
+            }
+            items[i].style.transform = 'scale(1.15)';
+            items[i].style.boxShadow = '0 0 15px ' + nodes[i].color;
+            i++;
+        }, 700);
+    }
+
+    // 显示完整关系闪烁效果
+    function showAllRelation() {
+        initDraw();
+        let list = canvas.querySelectorAll('.node, .line');
+        list.forEach((el, idx) => {
+            setTimeout(() => {
+                el.style.opacity = '0.4';
+                setTimeout(() => el.style.opacity = '1', 300);
+            }, idx * 100);
+        });
+    }
+
+    window.onload = initDraw;
+</script>
+</body>
+</html>

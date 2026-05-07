@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kubernetes 控制平面全景图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    font-family:'Segoe UI','Microsoft YaHei',Arial,sans-serif;
+    background:linear-gradient(135deg,#f5f7fa 0%,#e8ecf1 100%);
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px;
+}
+h1{color:#2c3e50;margin:20px 0 6px;font-size:28px;}
+.subtitle{color:#7f8c8d;margin-bottom:18px;font-size:14px;}
+#statusText{font-weight:bold;color:#2c3e50;min-height:22px;text-align:center;margin-bottom:10px;font-size:15px;}
+.controls{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;justify-content:center;}
+.controls button{padding:10px 24px;font-size:15px;border:none;border-radius:6px;cursor:pointer;color:#fff;font-weight:bold;transition:all .3s;}
+.btn-play{background:#27ae60;}.btn-play:hover{background:#219a52;}
+.btn-pause{background:#e67e22;}.btn-pause:hover{background:#d35400;}
+.btn-reset{background:#e74c3c;}.btn-reset:hover{background:#c0392b;}
+.btn-step{background:#3498db;}.btn-step:hover{background:#2980b9;}
+button:disabled{background:#bdc3c7!important;cursor:not-allowed;}
+.canvas-wrap{background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.10);padding:20px;width:96%;max-width:1160px;}
+canvas{width:100%;border-radius:8px;display:block;}
+.legend{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;margin-top:16px;font-size:13px;color:#555;}
+.legend-item{display:flex;align-items:center;gap:6px;}
+.legend-color{width:20px;height:12px;border-radius:3px;border:1px solid #ccc;}
+.info-box{margin-top:18px;padding:18px 24px;background:#fefefe;border-left:4px solid #3498db;border-radius:6px;font-size:14px;color:#444;max-width:1160px;width:96%;line-height:2;}
+.info-box b{color:#2c3e50;}
+.info-box ol{padding-left:20px;margin-top:8px;}
+.info-box li{margin-bottom:6px;}
+.comp-detail{margin-top:18px;padding:18px 24px;background:#fefefe;border-left:4px solid #27ae60;border-radius:6px;font-size:14px;color:#444;max-width:1160px;width:96%;line-height:2;}
+.comp-detail table{width:100%;border-collapse:collapse;margin-top:10px;}
+.comp-detail th,.comp-detail td{border:1px solid #ddd;padding:10px 14px;text-align:left;}
+.comp-detail th{background:#f0f7f0;color:#2c3e50;font-weight:bold;white-space:nowrap;}
+.comp-detail td:first-child{font-weight:bold;color:#2980b9;white-space:nowrap;width:180px;}
+</style>
+</head>
+<body>
+<h1>Kubernetes 控制平面全景图</h1>
+<p class="subtitle">API Server / etcd / Scheduler / Controller Manager / kubelet / kube-proxy / Cloud Controller Manager 全组件交互</p>
+
+<div id="statusText">点击「播放」开始动画演示</div>
+
+<div class="controls">
+    <button class="btn-play" id="btnPlay" onclick="play()">&#9654; 播放</button>
+    <button class="btn-pause" id="btnPause" onclick="pause()" disabled>&#9208; 暂停</button>
+    <button class="btn-step" id="btnStep" onclick="stepForward()">&#9197; 单步</button>
+    <button class="btn-reset" id="btnReset" onclick="reset()">&#8635; 重置</button>
+</div>
+
+<div class="canvas-wrap">
+    <canvas id="cv" width="1120" height="720"></canvas>
+</div>
+
+<div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#e74c3c"></div>kubectl 用户入口</div>
+    <div class="legend-item"><div class="legend-color" style="background:#27ae60"></div>API Server 集群网关</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f39c12"></div>etcd 数据存储</div>
+    <div class="legend-item"><div class="legend-color" style="background:#3498db"></div>Scheduler 调度器</div>
+    <div class="legend-item"><div class="legend-color" style="background:#9b59b6"></div>Controller Manager</div>
+    <div class="legend-item"><div class="legend-color" style="background:#1abc9c"></div>kubelet 节点代理</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e67e22"></div>kube-proxy 网络代理</div>
+    <div class="legend-item"><div class="legend-color" style="background:#7f8c8d"></div>Cloud Controller</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f39c12;border-radius:50%"></div>数据包动画</div>
+    <div class="legend-item"><div class="legend-color" style="background:none;border:2px dashed #f39c12"></div>Watch 机制(虚线)</div>
+</div>
+
+<div class="comp-detail">
+<b>各组件职责详解</b>
+<table>
+<tr><th>组件</th><th>职责说明</th></tr>
+<tr><td>kubectl</td><td>命令行工具，用户通过它向 API Server 发送 RESTful 请求（如 kubectl apply/get/delete），是人与集群交互的主要入口。</td></tr>
+<tr><td>API Server</td><td>集群的统一网关和通信枢纽。所有组件（包括 kubectl、Scheduler、Controller Manager、kubelet 等）都只能通过 API Server 进行通信。负责认证(Authentication)、授权(Authorization)、准入控制(Admission Control)，并将数据持久化到 etcd。</td></tr>
+<tr><td>etcd</td><td>分布式键值存储数据库，保存集群所有状态数据（Pod、Service、ConfigMap、Secret 等）。只有 API Server 能直接读写 etcd，其他组件必须通过 API Server 间接访问。采用 Raft 协议保证一致性。</td></tr>
+<tr><td>Scheduler</td><td>调度器，通过 Watch 机制监听 API Server，发现 nodeName 为空的 Pod 后触发调度。先执行过滤(Filtering)排除不满足条件的节点（资源不足、亲和性不匹配等），再执行打分(Scoring)选出最优节点，最后通过 API Server 更新 Pod 的 nodeName 字段。</td></tr>
+<tr><td>Controller Manager</td><td>控制器管理器，内部运行多个控制器：Deployment Controller、ReplicaSet Controller、Node Controller、Endpoint Controller、ServiceAccount Controller 等。每个控制器通过 Watch 机制监听资源变化，执行 Reconcile 循环，确保集群实际状态始终趋向期望状态。</td></tr>
+<tr><td>kubelet</td><td>运行在每个 Worker 节点上的代理。Watch API Server 获取调度到本节点的 Pod 信息，调用容器运行时（containerd/CRI-O）创建和管理容器。同时负责执行健康检查（Liveness/Readiness Probe）、挂载存储卷、上报节点和 Pod 状态。</td></tr>
+<tr><td>kube-proxy</td><td>运行在每个节点上的网络代理。Watch API Server 中 Service 和 Endpoint 对象的变化，动态维护节点上的 iptables 或 IPVS 规则，实现 Service ClusterIP 到后端 Pod IP 的流量转发和负载均衡。</td></tr>
+<tr><td>Cloud Controller Manager</td><td>云控制器管理器（仅云环境），与云厂商 API 交互。管理 LoadBalancer 类型 Service 的云负载均衡器创建、Node 对象与云实例的映射、路由配置等。将云相关逻辑从核心控制器中解耦。</td></tr>
+</table>
+</div>
+
+<div class="info-box">
+<b>完整流程说明（以创建 Deployment 为例）：</b>
+<ol>
+<li><b>用户提交请求：</b>用户执行 kubectl apply -f deployment.yaml，kubectl 将 YAML 转换为 JSON 并发送 POST 请求到 API Server。</li>
+<li><b>API Server 认证授权：</b>API Server 收到请求后，依次执行认证（验证用户身份）、授权（检查 RBAC 权限）、准入控制（执行 MutatingWebhook/ValidatingWebhook），全部通过后将 Deployment 对象写入 etcd。</li>
+<li><b>Controller Manager 响应：</b>Deployment Controller 通过 Watch 机制发现新的 Deployment 对象，创建对应的 ReplicaSet；ReplicaSet Controller 随后创建指定数量的 Pod 对象（此时 Pod 的 nodeName 为空）。</li>
+<li><b>Scheduler 调度 Pod：</b>Scheduler 通过 Watch 发现 nodeName 为空的 Pod，执行过滤算法（检查节点资源、污点容忍、亲和性等）和打分算法（评估资源利用率、数据局部性等），选出最优节点，将 Pod 绑定信息（nodeName）通过 API Server 写入 etcd。</li>
+<li><b>kubelet 创建容器：</b>目标节点的 kubelet 通过 Watch 发现有 Pod 调度到本节点，调用容器运行时拉取镜像、创建容器、配置网络（调用 CNI 插件）、挂载存储卷，启动容器并开始执行健康检查。</li>
+<li><b>kubelet 上报状态：</b>kubelet 持续向 API Server 汇报节点状态（CPU/内存/磁盘）和 Pod 状态（Running/Failed/Succeeded），API Server 将状态更新写入 etcd。</li>
+<li><b>Endpoint Controller 更新：</b>当 Pod 变为 Ready 状态后，Endpoint Controller 将 Pod IP 添加到对应 Service 的 Endpoints 对象中。</li>
+<li><b>kube-proxy 更新规则：</b>kube-proxy Watch 到 Service/Endpoints 变化后，更新本节点的 iptables/IPVS 规则，使流量能正确转发到新的 Pod。</li>
+<li><b>Cloud Controller 联动：</b>如果 Service 类型为 LoadBalancer，Cloud Controller Manager 会调用云厂商 API 创建/更新外部负载均衡器，将外部流量引入集群。</li>
+</ol>
+</div>
+
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+var animState='idle',step=0,maxStep=9,packetProgress=0,animTimer=null,animFrame=null,lastTime=0;
+
+var stepDescs=[
+'Step1: kubectl 发送请求 -> API Server（认证/授权/准入控制）',
+'Step2: API Server 将资源对象写入 etcd 持久化存储',
+'Step3: Controller Manager Watch 到变化，创建 ReplicaSet/Pod',
+'Step4: Scheduler Watch 到未调度 Pod，执行过滤+打分算法',
+'Step5: Scheduler 将 Pod 绑定信息通过 API Server 写入 etcd',
+'Step6: kubelet Watch 到调度指令，创建容器并启动 Pod',
+'Step7: kubelet 上报节点和 Pod 状态到 API Server',
+'Step8: kube-proxy Watch Service/Endpoint 变化，更新 iptables/IPVS 规则',
+'Step9: Cloud Controller Manager 管理云资源（LoadBalancer/路由等）'
+];
+
+// 组件定义
+var boxes={
+    kubectl:   {x:40, y:280,w:110,h:65, label:'kubectl',              sub:'命令行工具',       color:'#e74c3c',tc:'#fff'},
+    apiserver: {x:240,y:260,w:160,h:85, label:'API Server',           sub:'集群网关/认证授权', color:'#27ae60',tc:'#fff'},
+    etcd:      {x:500,y:60, w:130,h:65, label:'etcd',                 sub:'分布式KV存储',     color:'#f39c12',tc:'#fff'},
+    scheduler: {x:500,y:200,w:140,h:70, label:'Scheduler',            sub:'调度器(过滤+打分)', color:'#3498db',tc:'#fff'},
+    ctrlmgr:   {x:500,y:340,w:170,h:75, label:'Controller',           sub:'Manager(Reconcile)',color:'#9b59b6',tc:'#fff'},
+    kubelet:   {x:240,y:500,w:130,h:70, label:'kubelet',              sub:'节点代理/容器管理', color:'#1abc9c',tc:'#fff'},
+    kubeproxy: {x:500,y:500,w:140,h:70, label:'kube-proxy',           sub:'网络代理(iptables/IPVS)',color:'#e67e22',tc:'#fff'},
+    cloudctrl: {x:760,y:340,w:160,h:70, label:'Cloud Controller',     sub:'Manager(云资源)',   color:'#7f8c8d',tc:'#fff'},
+    node:      {x:180,y:460,w:520,h:140,label:'',                     sub:'',                 color:'transparent',tc:'transparent'},
+    pods:      {x:760,y:500,w:120,h:65, label:'Pods',                 sub:'(容器实例)',        color:'#e74c3c',tc:'#fff'}
+};
+
+// 连线定义
+var arrowDefs=[
+    {from:'kubectl',  to:'apiserver', label:'REST请求',         dash:false, color:'#e74c3c'},
+    {from:'apiserver',to:'etcd',      label:'读写状态数据',     dash:false, color:'#27ae60'},
+    {from:'apiserver',to:'scheduler', label:'Watch未调度Pod',   dash:true,  color:'#f39c12'},
+    {from:'scheduler',to:'apiserver', label:'绑定Pod->Node',    dash:false, color:'#3498db'},
+    {from:'apiserver',to:'ctrlmgr',   label:'Watch资源变化',    dash:true,  color:'#f39c12'},
+    {from:'ctrlmgr',  to:'apiserver', label:'创建/更新资源',    dash:false, color:'#9b59b6'},
+    {from:'apiserver',to:'kubelet',   label:'Watch调度指令',    dash:true,  color:'#f39c12'},
+    {from:'kubelet',  to:'apiserver', label:'上报状态',         dash:false, color:'#1abc9c'},
+    {from:'apiserver',to:'kubeproxy', label:'Watch Svc/EP',    dash:true,  color:'#f39c12'},
+    {from:'apiserver',to:'cloudctrl', label:'Watch云资源',      dash:true,  color:'#f39c12'},
+    {from:'cloudctrl',to:'apiserver', label:'更新云资源状态',   dash:false, color:'#7f8c8d'},
+    {from:'kubelet',  to:'pods',      label:'管理容器',         dash:false, color:'#1abc9c'}
+];
+
+function bx(b){return b.x+b.w/2;} function by(b){return b.y+b.h/2;}
+
+function drawRR(x,y,w,h,r,fill,stroke,lw){
+    ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+    if(fill&&fill!=='transparent'){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw||2;ctx.stroke();}
+}
+
+function drawBox(b,hl){
+    if(b.color==='transparent')return;
+    if(hl){ctx.shadowColor=b.color;ctx.shadowBlur=18;}
+    drawRR(b.x,b.y,b.w,b.h,10,b.color,hl?'#fff':'rgba(0,0,0,0.12)');
+    ctx.shadowBlur=0;
+    ctx.fillStyle=b.tc;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.font='bold 15px Segoe UI,Microsoft YaHei,sans-serif';
+    ctx.fillText(b.label,bx(b),by(b)-10);
+    ctx.font='12px Segoe UI,Microsoft YaHei,sans-serif';
+    ctx.fillText(b.sub,bx(b),by(b)+12);
+}
+
+function drawArrow(a,hl){
+    var fb=boxes[a.from],tb=boxes[a.to];
+    var x1=bx(fb),y1=by(fb),x2=bx(tb),y2=by(tb);
+    var ang=Math.atan2(y2-y1,x2-x1);
+    // 裁剪到边框
+    var dx=Math.cos(ang),dy=Math.sin(ang);
+    // 简化：用半宽/半高裁剪
+    if(Math.abs(dx)>0.01){
+        var tw=fb.w/2/Math.abs(dx);var th=fb.h/2/Math.abs(dy||0.001);
+        var t=Math.min(tw,th);x1=bx(fb)+dx*t;y1=by(fb)+dy*t;
+    }
+    if(Math.abs(dx)>0.01){
+        var tw2=tb.w/2/Math.abs(dx);var th2=tb.h/2/Math.abs(dy||0.001);
+        var t2=Math.min(tw2,th2);x2=bx(tb)-dx*t2;y2=by(tb)-dy*t2;
+    }
+    ctx.beginPath();
+    ctx.strokeStyle=hl?(a.color||'#f39c12'):'#ccc';
+    ctx.lineWidth=hl?3:1.5;
+    if(a.dash)ctx.setLineDash([7,4]);else ctx.setLineDash([]);
+    ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+    // 箭头
+    ctx.beginPath();ctx.fillStyle=hl?(a.color||'#f39c12'):'#ccc';
+    ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-12*Math.cos(ang-0.4),y2-12*Math.sin(ang-0.4));
+    ctx.lineTo(x2-12*Math.cos(ang+0.4),y2-12*Math.sin(ang+0.4));
+    ctx.fill();
+    // label
+    if(a.label){
+        ctx.fillStyle=hl?'#333':'#aaa';
+        ctx.font=(hl?'bold ':'')+' 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
+        var mx=(x1+x2)/2,my=(y1+y2)/2-7;
+        // 背景
+        if(hl){
+            var tw3=ctx.measureText(a.label).width+8;
+            ctx.fillStyle='rgba(255,255,255,0.85)';
+            ctx.fillRect(mx-tw3/2,my-14,tw3,16);
+            ctx.fillStyle='#333';
+        }
+        ctx.fillText(a.label,mx,my);
+    }
+}
+
+// 每步高亮哪些箭头和组件
+function hlArrows(s){
+    var map={0:[0],1:[1],2:[4,5],3:[2],4:[3,1],5:[6],6:[7],7:[8],8:[9,10]};
+    return map[s]||[];
+}
+function hlBoxes(s){
+    var map={
+        0:['kubectl','apiserver'],
+        1:['apiserver','etcd'],
+        2:['apiserver','ctrlmgr'],
+        3:['apiserver','scheduler'],
+        4:['scheduler','apiserver','etcd'],
+        5:['apiserver','kubelet','pods'],
+        6:['kubelet','apiserver'],
+        7:['apiserver','kubeproxy'],
+        8:['apiserver','cloudctrl']
+    };
+    return map[s]||[];
+}
+// 数据包路径
+function pktPath(s){
+    var map={
+        0:[boxes.kubectl,boxes.apiserver],
+        1:[boxes.apiserver,boxes.etcd],
+        2:[boxes.ctrlmgr,boxes.apiserver],
+        3:[boxes.apiserver,boxes.scheduler],
+        4:[boxes.scheduler,boxes.apiserver],
+        5:[boxes.apiserver,boxes.kubelet],
+        6:[boxes.kubelet,boxes.apiserver],
+        7:[boxes.apiserver,boxes.kubeproxy],
+        8:[boxes.cloudctrl,boxes.apiserver]
+    };
+    return map[s]||null;
+}
+
+function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#f9fafb';ctx.fillRect(0,0,W,H);
+
+    // 画 Worker Node 区域框
+    ctx.setLineDash([6,4]);ctx.strokeStyle='#bbb';ctx.lineWidth=1.5;
+    drawRR(170,450,540,150,12,null,'#bbb',1.5);
+    ctx.setLineDash([]);
+    ctx.fillStyle='#999';ctx.font='12px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText('Worker Node',180,455);
+
+    // 画 Control Plane 区域框
+    ctx.setLineDash([6,4]);ctx.strokeStyle='#3498db';ctx.lineWidth=1.5;
+    drawRR(220,40,470,400,12,null,'#3498db',1.5);
+    ctx.setLineDash([]);
+    ctx.fillStyle='#3498db';ctx.font='12px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText('Control Plane (Master)',230,45);
+
+    var ha=hlArrows(step),hb=hlBoxes(step);
+    for(var i=0;i<arrowDefs.length;i++)drawArrow(arrowDefs[i],ha.indexOf(i)>=0);
+    var keys=Object.keys(boxes);
+    for(var i=0;i<keys.length;i++)drawBox(boxes[keys[i]],hb.indexOf(keys[i])>=0);
+
+    // 数据包
+    var pp=pktPath(step);
+    if(pp&&packetProgress>0){
+        var t=Math.min(packetProgress,1);
+        var px=bx(pp[0])+(bx(pp[1])-bx(pp[0]))*t;
+        var py=by(pp[0])+(by(pp[1])-by(pp[0]))*t;
+        ctx.beginPath();ctx.arc(px,py,10,0,Math.PI*2);
+        ctx.fillStyle='#f39c12';ctx.shadowColor='#f39c12';ctx.shadowBlur=18;ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('PKT',px,py);
+    }
+
+    // 步骤指示
+    ctx.fillStyle='#2c3e50';ctx.font='bold 13px sans-serif';
+    ctx.textAlign='left';ctx.textBaseline='bottom';
+    ctx.fillText('步骤 '+(step+1)+' / '+maxStep,30,H-10);
+}
+
+function updateStatus(){document.getElementById('statusText').textContent=stepDescs[step]||'';}
+
+function animate(ts){
+    if(animState!=='playing')return;
+    if(!lastTime)lastTime=ts;
+    var dt=(ts-lastTime)/1000;lastTime=ts;
+    packetProgress+=dt*0.7;
+    if(packetProgress>=1){packetProgress=0;nextStep();}
+    draw();updateStatus();
+    animFrame=requestAnimationFrame(animate);
+}
+
+function nextStep(){
+    if(step<maxStep-1){step++;packetProgress=0;}
+    else{
+        animState='idle';
+        document.getElementById('btnPlay').disabled=false;
+        document.getElementById('btnPause').disabled=true;
+        document.getElementById('btnStep').disabled=false;
+        document.getElementById('statusText').textContent='动画演示完成! 点击「重置」可重新播放';
+    }
+}
+
+function play(){
+    if(animState==='playing')return;
+    animState='playing';lastTime=0;
+    document.getElementById('btnPlay').disabled=true;
+    document.getElementById('btnPause').disabled=false;
+    document.getElementById('btnStep').disabled=true;
+    animFrame=requestAnimationFrame(animate);
+}
+function pause(){
+    animState='paused';
+    if(animTimer){clearTimeout(animTimer);animTimer=null;}
+    document.getElementById('btnPlay').disabled=false;
+    document.getElementById('btnPause').disabled=true;
+    document.getElementById('btnStep').disabled=false;
+}
+function reset(){
+    animState='idle';
+    if(animTimer){clearTimeout(animTimer);animTimer=null;}
+    if(animFrame)cancelAnimationFrame(animFrame);
+    step=0;packetProgress=0;lastTime=0;
+    document.getElementById('btnPlay').disabled=false;
+    document.getElementById('btnPause').disabled=true;
+    document.getElementById('btnStep').disabled=false;
+    document.getElementById('statusText').textContent='点击「播放」开始动画演示';
+    draw();updateStatus();
+}
+function stepForward(){
+    if(step<maxStep-1){step++;packetProgress=0;}
+    draw();updateStatus();
+}
+draw();updateStatus();
+</script>
+</body>
+</html>

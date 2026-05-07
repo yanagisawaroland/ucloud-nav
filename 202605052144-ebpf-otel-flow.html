@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eBPF → OTel → Prometheus/Loki/Tempo → Grafana</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@400;700;900&display=swap');
+
+:root{
+  --bg:       #edf2f8;
+  --card:     #ffffff;
+  --card2:    #f6f9fd;
+  --border:   #c8d6ea;
+  --text:     #162336;
+  --muted:    #526278;
+
+  --c-ebpf:   #7c3aed;
+  --c-kern:   #0369a1;
+  --c-otel:   #0891b2;
+  --c-prom:   #d97706;
+  --c-loki:   #059669;
+  --c-tempo:  #db2777;
+  --c-graf:   #2563eb;
+  --c-alert:  #dc2626;
+  --c-flow:   #64748b;
+
+  --sh: 0 4px 28px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg);
+  font-family:'Noto Sans SC',sans-serif;
+  color:var(--text);
+  min-height:100vh;
+  padding:28px 14px 56px;
+}
+
+/* ── header ── */
+header{text-align:center;margin-bottom:22px;}
+header h1{
+  font-size:clamp(1.45rem,3.5vw,2.35rem);
+  font-weight:900;letter-spacing:-1px;line-height:1.25;
+}
+header h1 .e1{color:var(--c-ebpf);}
+header h1 .e2{color:var(--c-otel);}
+header h1 .e3{color:var(--c-prom);}
+header h1 .e4{color:var(--c-graf);}
+header p{
+  margin-top:7px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;color:var(--muted);
+}
+
+/* ── controls ── */
+.ctrl{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-bottom:14px;}
+.btn{
+  padding:8px 18px;border:2px solid var(--border);
+  border-radius:8px;background:var(--card);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:.79rem;font-weight:700;
+  cursor:pointer;transition:all .16s;
+}
+.btn:hover{border-color:var(--c-ebpf);color:var(--c-ebpf);transform:translateY(-1px);}
+.btn.pri{background:var(--c-ebpf);color:#fff;border-color:var(--c-ebpf);}
+.btn.pri:hover{background:#6d28d9;border-color:#6d28d9;color:#fff;}
+.btn.red{border-color:var(--c-alert);color:var(--c-alert);}
+.btn.red:hover{background:var(--c-alert);color:#fff;}
+
+.spd-row{
+  display:flex;align-items:center;gap:9px;
+  justify-content:center;margin-bottom:18px;
+  font-size:.79rem;color:var(--muted);
+  font-family:'JetBrains Mono',monospace;
+}
+input[type=range]{accent-color:var(--c-ebpf);width:100px;}
+
+/* ── progress bar ── */
+.pgbar{
+  max-width:1200px;margin:0 auto 20px;
+  display:flex;gap:7px;padding:0 2px;
+}
+.pgseg{
+  flex:1;height:5px;background:var(--border);
+  border-radius:3px;overflow:hidden;
+}
+.pgfill{height:100%;width:0%;border-radius:3px;transition:width .55s cubic-bezier(.4,0,.2,1);}
+
+/* ══════════════════════════════
+   PIPELINE  (5 layers)
+══════════════════════════════ */
+.pipeline{
+  max-width:1200px;margin:0 auto;
+  display:flex;flex-direction:column;gap:0;
+}
+
+/* layer row */
+.layer{
+  display:flex;align-items:stretch;gap:0;
+  position:relative;
+}
+
+/* vertical connector between layers */
+.vconn{
+  max-width:1200px;margin:0 auto;
+  display:flex;justify-content:center;
+  align-items:center;
+  height:38px;position:relative;
+}
+.vline{
+  width:3px;height:100%;
+  background:var(--border);border-radius:2px;
+  position:relative;overflow:hidden;
+}
+.vfill{
+  position:absolute;top:-100%;left:0;
+  width:100%;height:100%;
+  border-radius:2px;
+  transition:top .5s cubic-bezier(.4,0,.2,1);
+}
+.vconn.flow .vfill{top:0;}
+.vtag{
+  position:absolute;right:calc(50% + 10px);
+  font-family:'JetBrains Mono',monospace;
+  font-size:.65rem;color:var(--muted);white-space:nowrap;
+  opacity:0;transition:opacity .3s .3s;
+}
+.vconn.flow .vtag{opacity:1;}
+
+/* ── node card ── */
+.nd{
+  flex:1;
+  border:2.5px solid transparent;
+  border-radius:16px;
+  background:var(--card);
+  padding:18px 14px 15px;
+  text-align:center;
+  position:relative;
+  margin:0 6px;
+  transition:opacity .38s,transform .38s,box-shadow .38s;
+  opacity:.2;transform:translateY(8px);
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.nd.vis{opacity:1;transform:translateY(0);}
+
+.nd .ico{font-size:2rem;line-height:1;margin-bottom:8px;}
+.nd .lbl{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.77rem;font-weight:700;letter-spacing:.3px;
+}
+.nd .sub{font-size:.66rem;color:var(--muted);margin-top:5px;line-height:1.6;}
+
+/* badge */
+.badge{
+  position:absolute;top:-9px;right:-9px;
+  width:19px;height:19px;border-radius:50%;
+  background:var(--c-ebpf);color:#fff;
+  font-size:.58rem;font-weight:900;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .3s .15s;
+}
+.nd.vis .badge{opacity:1;}
+
+/* colour themes */
+.tk {border-color:var(--c-kern); box-shadow:0 0 20px rgba(3,105,161,.13);}
+.tk .lbl{color:var(--c-kern);}
+.te {border-color:var(--c-ebpf); box-shadow:0 0 22px rgba(124,58,237,.17);}
+.te .lbl{color:var(--c-ebpf);}
+.to {border-color:var(--c-otel); box-shadow:0 0 20px rgba(8,145,178,.14);}
+.to .lbl{color:var(--c-otel);}
+.tp {border-color:var(--c-prom); box-shadow:0 0 20px rgba(217,119,6,.14);}
+.tp .lbl{color:var(--c-prom);}
+.tl {border-color:var(--c-loki); box-shadow:0 0 20px rgba(5,150,105,.14);}
+.tl .lbl{color:var(--c-loki);}
+.tt {border-color:var(--c-tempo);box-shadow:0 0 20px rgba(219,39,119,.14);}
+.tt .lbl{color:var(--c-tempo);}
+.tg {border-color:var(--c-graf); box-shadow:0 0 22px rgba(37,99,235,.16);}
+.tg .lbl{color:var(--c-graf);}
+.ta {border-color:var(--c-alert);box-shadow:0 0 20px rgba(220,38,38,.14);}
+.ta .lbl{color:var(--c-alert);}
+
+/* ── horizontal arrow ── */
+.harr{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  width:44px;flex-shrink:0;gap:3px;
+}
+.hline{
+  width:100%;height:3px;background:var(--border);
+  border-radius:2px;position:relative;overflow:hidden;
+}
+.hfill{
+  position:absolute;left:-100%;top:0;
+  height:100%;width:100%;border-radius:2px;
+  transition:left .45s cubic-bezier(.4,0,.2,1);
+}
+.harr.flow .hfill{left:0;}
+.harr .tip{
+  font-size:1rem;color:var(--border);
+  transition:color .3s;line-height:1;
+}
+.harr.flow .tip{color:var(--c-otel);}
+.harr .htag{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.6rem;color:var(--muted);
+  white-space:nowrap;opacity:0;
+  transition:opacity .3s .25s;
+}
+.harr.flow .htag{opacity:1;}
+
+/* ══ DATA-STREAM ANIMATION ══ */
+.stream-wrap{
+  max-width:1200px;margin:18px auto 0;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:16px;padding:20px 24px;box-shadow:var(--sh);
+}
+.stream-wrap h3{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;font-weight:700;color:var(--c-ebpf);
+  margin-bottom:14px;
+}
+.streams{display:flex;flex-direction:column;gap:12px;}
+.srow{display:flex;align-items:center;gap:10px;}
+.slbl{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.68rem;color:var(--muted);
+  width:110px;flex-shrink:0;text-align:right;
+}
+.strack{
+  flex:1;height:24px;background:#f3f6fb;
+  border:1px solid var(--border);border-radius:12px;
+  position:relative;overflow:hidden;
+}
+.spkt{
+  position:absolute;top:50%;left:-60px;
+  transform:translateY(-50%);
+  height:16px;border-radius:8px;padding:0 9px;
+  font-size:.61rem;font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  display:flex;align-items:center;white-space:nowrap;
+}
+.spkt.metric{background:rgba(217,119,6,.12);color:var(--c-prom);border:1.5px solid var(--c-prom);}
+.spkt.log   {background:rgba(5,150,105,.12); color:var(--c-loki);border:1.5px solid var(--c-loki);}
+.spkt.trace {background:rgba(219,39,119,.12);color:var(--c-tempo);border:1.5px solid var(--c-tempo);}
+.spkt.alert {background:rgba(220,38,38,.11); color:var(--c-alert);border:1.5px solid var(--c-alert);}
+.sres{
+  width:54px;flex-shrink:0;
+  font-size:.7rem;font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  text-align:center;opacity:0;transition:opacity .3s;
+}
+.sres.show{opacity:1;}
+.sres.m{color:var(--c-prom);}.sres.l{color:var(--c-loki);}
+.sres.tr{color:var(--c-tempo);}.sres.al{color:var(--c-alert);}
+
+/* ══ INFO PANEL ══ */
+.info{
+  max-width:1200px;margin:16px auto 0;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:16px;padding:20px 24px;
+  box-shadow:var(--sh);min-height:92px;
+}
+.is{display:none;animation:fsl .32s ease;}
+.is.show{display:block;}
+@keyframes fsl{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.is h3{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.84rem;font-weight:700;margin-bottom:8px;
+  display:flex;align-items:center;gap:9px;
+}
+.dot8{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.is p{font-size:.82rem;color:var(--muted);line-height:1.9;}
+.is code{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:1px 6px;
+  font-family:'JetBrains Mono',monospace;font-size:.73rem;color:var(--text);
+}
+
+/* ══ REF CARDS ══ */
+.refs{
+  max-width:1200px;margin:18px auto 0;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;
+}
+.rc{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:11px;padding:15px;
+  border-left:4px solid transparent;
+  transition:transform .18s,box-shadow .18s;
+  box-shadow:0 1px 5px rgba(0,0,0,.04);
+}
+.rc:hover{transform:translateY(-2px);box-shadow:0 5px 18px rgba(0,0,0,.08);}
+.rc.te{border-left-color:var(--c-ebpf);}
+.rc.tk{border-left-color:var(--c-kern);}
+.rc.to{border-left-color:var(--c-otel);}
+.rc.tp{border-left-color:var(--c-prom);}
+.rc.tl{border-left-color:var(--c-loki);}
+.rc.tt{border-left-color:var(--c-tempo);}
+.rc.tg{border-left-color:var(--c-graf);}
+.rc.ta{border-left-color:var(--c-alert);}
+.rc h4{font-family:'JetBrains Mono',monospace;font-size:.73rem;font-weight:700;margin-bottom:7px;}
+.rc.te h4{color:var(--c-ebpf);}.rc.tk h4{color:var(--c-kern);}
+.rc.to h4{color:var(--c-otel);}.rc.tp h4{color:var(--c-prom);}
+.rc.tl h4{color:var(--c-loki);}.rc.tt h4{color:var(--c-tempo);}
+.rc.tg h4{color:var(--c-graf);}.rc.ta h4{color:var(--c-alert);}
+.rc ul{list-style:none;font-size:.71rem;color:var(--muted);line-height:2.1;}
+.rc ul li::before{content:'▸ ';opacity:.4;}
+
+footer{text-align:center;margin-top:36px;font-size:.69rem;
+       color:#b0bec5;font-family:'JetBrains Mono',monospace;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>
+    <span class="e1">eBPF</span> → 
+    <span class="e2">OpenTelemetry</span> → 
+    <span class="e3">Prometheus · Loki · Tempo</span> → 
+    <span class="e4">Grafana</span>
+  </h1>
+  <p>内核流量采集 · 信号统一处理 · 多后端存储 · 可视化告警</p>
+</header>
+
+<!-- Controls -->
+<div class="ctrl">
+  <button class="btn pri" id="bPlay">▶ 开始演示</button>
+  <button class="btn" id="bPrev">◀ 上一步</button>
+  <button class="btn" id="bNext">▶ 下一步</button>
+  <button class="btn" id="bAuto">⏯ 自动播放</button>
+  <button class="btn red" id="bReset">↺ 重置</button>
+</div>
+<div class="spd-row">
+  速度: <input type="range" id="spd" min="500" max="3200" value="1500" step="100">
+  <span id="spdLbl">1.5s</span>
+</div>
+
+<!-- Progress -->
+<div class="pgbar" id="pgbar"></div>
+
+<!-- ══════════════════════════
+     PIPELINE LAYERS
+══════════════════════════ -->
+<div class="pipeline" id="pipeline">
+
+  <!-- Layer 1: Kernel + eBPF -->
+  <div class="layer">
+    <div class="nd tk" id="n0">
+      <div class="badge">1</div>
+      <div class="ico">🐧</div>
+      <div class="lbl">Linux Kernel</div>
+      <div class="sub">syscall · network<br>scheduler · memory</div>
+    </div>
+    <div class="harr" id="h0">
+      <div class="htag">hook</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-kern),var(--c-ebpf))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd te" id="n1">
+      <div class="badge">2</div>
+      <div class="ico">🔬</div>
+      <div class="lbl">eBPF Programs</div>
+      <div class="sub">kprobe/tracepoint<br>XDP · socket filter</div>
+    </div>
+    <div class="harr" id="h1">
+      <div class="htag">maps</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-ebpf),var(--c-ebpf))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd te" id="n2">
+      <div class="badge">3</div>
+      <div class="ico">🗺️</div>
+      <div class="lbl">eBPF Maps</div>
+      <div class="sub">hash/array/ringbuf<br>perf event output</div>
+    </div>
+    <div class="harr" id="h2">
+      <div class="htag">export</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-ebpf),var(--c-otel))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd te" id="n3">
+      <div class="badge">4</div>
+      <div class="ico">🚀</div>
+      <div class="lbl">eBPF Exporter<br>/ Agent</div>
+      <div class="sub">Tetragon · Cilium<br>bpftrace · Beyla</div>
+    </div>
+  </div>
+
+  <!-- V-connector 1 -->
+  <div class="vconn" id="vc0">
+    <div class="vtag">OTLP gRPC/HTTP</div>
+    <div class="vline"><div class="vfill" style="background:linear-gradient(180deg,var(--c-ebpf),var(--c-otel))"></div></div>
+  </div>
+
+  <!-- Layer 2: OpenTelemetry -->
+  <div class="layer">
+    <div class="nd to" id="n4">
+      <div class="badge">5</div>
+      <div class="ico">📡</div>
+      <div class="lbl">OTel SDK</div>
+      <div class="sub">应用侧埋点<br>traces · metrics · logs</div>
+    </div>
+    <div class="harr" id="h3">
+      <div class="htag">OTLP</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-otel),var(--c-otel))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd to" id="n5" style="flex:2">
+      <div class="badge">6</div>
+      <div class="ico">🔀</div>
+      <div class="lbl">OTel Collector</div>
+      <div class="sub">Receiver → Processor → Exporter<br>batch · filter · transform · tail-sampling</div>
+    </div>
+    <div class="harr" id="h4">
+      <div class="htag">fan-out</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-otel),var(--c-prom))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd to" id="n6">
+      <div class="badge">7</div>
+      <div class="ico">🔧</div>
+      <div class="lbl">Processor</div>
+      <div class="sub">属性增强<br>采样 · 过滤</div>
+    </div>
+  </div>
+
+  <!-- V-connector 2 -->
+  <div class="vconn" id="vc1">
+    <div class="vtag">Remote Write / HTTP Push</div>
+    <div class="vline"><div class="vfill" style="background:linear-gradient(180deg,var(--c-otel),var(--c-prom))"></div></div>
+  </div>
+
+  <!-- Layer 3: Storage backends -->
+  <div class="layer">
+    <div class="nd tp" id="n7">
+      <div class="badge">8</div>
+      <div class="ico">📊</div>
+      <div class="lbl">Prometheus</div>
+      <div class="sub">Metrics 时序存储<br>PromQL · scrape</div>
+    </div>
+    <div class="harr" id="h5">
+      <div class="htag"></div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-prom),var(--c-loki))"></div></div>
+      <div class="tip" style="opacity:0">▶</div>
+    </div>
+    <div class="nd tl" id="n8">
+      <div class="badge">9</div>
+      <div class="ico">📜</div>
+      <div class="lbl">Loki</div>
+      <div class="sub">Logs 存储 · LogQL<br>label-based index</div>
+    </div>
+    <div class="harr" id="h6">
+      <div class="htag"></div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-loki),var(--c-tempo))"></div></div>
+      <div class="tip" style="opacity:0">▶</div>
+    </div>
+    <div class="nd tt" id="n9">
+      <div class="badge">10</div>
+      <div class="ico">🔗</div>
+      <div class="lbl">Tempo</div>
+      <div class="sub">Traces 存储<br>TraceQL · span 检索</div>
+    </div>
+    <div class="harr" id="h7">
+      <div class="htag"></div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-tempo),var(--c-alert))"></div></div>
+      <div class="tip" style="opacity:0">▶</div>
+    </div>
+    <div class="nd ta" id="n10">
+      <div class="badge">11</div>
+      <div class="ico">🔔</div>
+      <div class="lbl">Alertmanager</div>
+      <div class="sub">告警路由 · 静默<br>PagerDuty · Slack</div>
+    </div>
+  </div>
+
+  <!-- V-connector 3 -->
+  <div class="vconn" id="vc2">
+    <div class="vtag">DataSource Query</div>
+    <div class="vline"><div class="vfill" style="background:linear-gradient(180deg,var(--c-prom),var(--c-graf))"></div></div>
+  </div>
+
+  <!-- Layer 4: Grafana -->
+  <div class="layer">
+    <div class="nd tg" id="n11" style="flex:2">
+      <div class="badge">12</div>
+      <div class="ico">📈</div>
+      <div class="lbl">Grafana · Dashboard</div>
+      <div class="sub">统一可视化 · Explore · Correlations<br>Metrics + Logs + Traces 联动</div>
+    </div>
+    <div class="harr" id="h8">
+      <div class="htag">alert rule</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-graf),var(--c-alert))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd ta" id="n12">
+      <div class="badge">13</div>
+      <div class="ico">🚨</div>
+      <div class="lbl">Grafana Alerting</div>
+      <div class="sub">统一告警规则<br>多数据源告警</div>
+    </div>
+    <div class="harr" id="h9">
+      <div class="htag">notify</div>
+      <div class="hline"><div class="hfill" style="background:linear-gradient(90deg,var(--c-alert),var(--c-alert))"></div></div>
+      <div class="tip">▶</div>
+    </div>
+    <div class="nd ta" id="n13">
+      <div class="badge">14</div>
+      <div class="ico">📣</div>
+      <div class="lbl">通知渠道</div>
+      <div class="sub">Slack · DingTalk<br>PagerDuty · Email</div>
+    </div>
+  </div>
+
+</div><!-- /pipeline -->
+
+<!-- Data stream -->
+<div class="stream-wrap">
+  <h3>📡 数据流模拟</h3>
+  <div class="streams">
+    <div class="srow">
+      <div class="slbl">Metrics 流</div>
+      <div class="strack"><div class="spkt metric" id="sp0">cpu_usage{pod="web"} 0.72 ▶</div></div>
+      <div class="sres m" id="sr0">📊 Prom</div>
+    </div>
+    <div class="srow">
+      <div class="slbl">Logs 流</div>
+      <div class="strack"><div class="spkt log" id="sp1">level=error msg="timeout" ▶</div></div>
+      <div class="sres l" id="sr1">📜 Loki</div>
+    </div>
+    <div class="srow">
+      <div class="slbl">Traces 流</div>
+      <div class="strack"><div class="spkt trace" id="sp2">traceId=a3f... span=db ▶</div></div>
+      <div class="sres tr" id="sr2">🔗 Tempo</div>
+    </div>
+    <div class="srow">
+      <div class="slbl">Alert 触发</div>
+      <div class="strack"><div class="spkt alert" id="sp3">HighCPU > 90% FIRING ▶</div></div>
+      <div class="sres al" id="sr3">🚨 Alert</div>
+    </div>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div class="info">
+  <div class="is show" id="i0">
+    <h3><span class="dot8" style="background:var(--c-ebpf)"></span>准备就绪 — 点击开始演示</h3>
+    <p>完整可观测性链路：<code>eBPF</code> 内核采集 → <code>OTel Collector</code> 统一处理 → <code>Prometheus/Loki/Tempo</code> 分类存储 → <code>Grafana</code> 可视化告警。</p>
+  </div>
+  <div class="is" id="i1">
+    <h3><span class="dot8" style="background:var(--c-kern)"></span>Step 1 — Linux Kernel：可观测性源头</h3>
+    <p>内核暴露 syscall、网络栈、调度器、内存等事件点。eBPF 通过 <code>kprobe</code>、<code>tracepoint</code>、<code>uprobe</code> 等机制安全挂载到这些点，无需修改内核或重启进程。</p>
+  </div>
+  <div class="is" id="i2">
+    <h3><span class="dot8" style="background:var(--c-ebpf)"></span>Step 2 — eBPF Programs：内核态执行</h3>
+    <p>eBPF 程序在内核 JIT 编译执行，经 Verifier 安全校验。类型包括：<code>XDP</code>（网卡收包最早期）、<code>TC</code>（流量控制）、<code>socket filter</code>、<code>kprobe/tracepoint</code>（内核函数追踪）。</p>
+  </div>
+  <div class="is" id="i3">
+    <h3><span class="dot8" style="background:var(--c-ebpf)"></span>Step 3 — eBPF Maps：内核↔用户态共享</h3>
+    <p>eBPF Maps 是内核与用户空间共享的高性能数据结构，类型有 <code>hash</code>、<code>array</code>、<code>ringbuf</code>、<code>perf event</code>。用户态程序通过 fd 读取，实现零拷贝的事件传递。</p>
+  </div>
+  <div class="is" id="i4">
+    <h3><span class="dot8" style="background:var(--c-ebpf)"></span>Step 4 — eBPF Exporter / Agent：数据导出</h3>
+    <p>代表工具：<code>Cilium</code>（K8s 网络+安全策略）、<code>Tetragon</code>（安全可观测性）、<code>Beyla</code>（零代码应用 Trace）、<code>bpftrace</code>（临时脚本分析）。将 Maps 数据转为 OTLP/Prometheus 格式输出。</p>
+  </div>
+  <div class="is" id="i5">
+    <h3><span class="dot8" style="background:var(--c-otel)"></span>Step 5 — OTel SDK：应用侧埋点</h3>
+    <p>应用代码通过 OpenTelemetry SDK 手动埋点，或通过 Java Agent / eBPF 自动插桩，产生 <code>Traces</code>（调用链）、<code>Metrics</code>（指标）、<code>Logs</code>（日志）三类信号，统一以 <code>OTLP</code> 协议上报。</p>
+  </div>
+  <div class="is" id="i6">
+    <h3><span class="dot8" style="background:var(--c-otel)"></span>Step 6 — OTel Collector：信号处理枢纽</h3>
+    <p>Collector 三段式架构：<code>Receiver</code>（接收 OTLP/Jaeger/Zipkin/Prometheus）→ <code>Processor</code>（batch/filter/transform/tail-sampling）→ <code>Exporter</code>（输出到多后端）。支持 Agent 和 Gateway 两种部署模式。</p>
+  </div>
+  <div class="is" id="i7">
+    <h3><span class="dot8" style="background:var(--c-otel)"></span>Step 7 — Processor：数据加工</h3>
+    <p>常用 Processor：<code>batch</code>（减少请求次数）、<code>memory_limiter</code>（防 OOM）、<code>attributes</code>（增删改属性）、<code>tail_sampling</code>（基于完整 Trace 决策采样）、<code>transform</code>（OTTL 表达式转换）。</p>
+  </div>
+  <div class="is" id="i8">
+    <h3><span class="dot8" style="background:var(--c-prom)"></span>Step 8 — Prometheus：Metrics 存储</h3>
+    <p>时序数据库，支持 <code>scrape</code>（拉模型）和 <code>Remote Write</code>（推模型）。<code>PromQL</code> 强大的聚合查询，配合 <code>Recording Rules</code> 预计算，<code>Alerting Rules</code> 驱动告警。大规模场景可换 Thanos/VictoriaMetrics。</p>
+  </div>
+  <div class="is" id="i9">
+    <h3><span class="dot8" style="background:var(--c-loki)"></span>Step 9 — Loki：Logs 存储</h3>
+    <p>Loki 只索引标签（不全文索引），日志内容压缩存对象存储（S3/GCS/MinIO），成本极低。<code>LogQL</code> 支持 label filter、line filter、metric query。Promtail/OTel Collector 负责采集推送。</p>
+  </div>
+  <div class="is" id="i10">
+    <h3><span class="dot8" style="background:var(--c-tempo)"></span>Step 10 — Tempo：Traces 存储</h3>
+    <p>Grafana Tempo 专为大规模 Trace 设计，仅需对象存储，无需 Elasticsearch。支持 <code>TraceQL</code> 语言，可按 span 属性、duration、status 检索。与 Loki/Prometheus 深度集成，实现 Metrics→Traces→Logs 跳转。</p>
+  </div>
+  <div class="is" id="i11">
+    <h3><span class="dot8" style="background:var(--c-alert)"></span>Step 11 — Alertmanager：告警路由</h3>
+    <p>接收 Prometheus 告警，负责 <code>分组</code>（减少噪音）、<code>抑制</code>（父故障抑制子告警）、<code>静默</code>（维护窗口）、<code>路由</code>（按标签分发到不同渠道）。支持 Slack、PagerDuty、Email、Webhook。</p>
+  </div>
+  <div class="is" id="i12">
+    <h3><span class="dot8" style="background:var(--c-graf)"></span>Step 12 — Grafana Dashboard：统一可视化</h3>
+    <p>Grafana 统一查询 Prometheus/Loki/Tempo 三数据源。<code>Explore</code> 模式支持三者关联跳转：点击 Metrics 异常点 → 跳转同时间 Logs → 再跳转关联 TraceID。<code>Correlations</code> 功能自动建立三者链接。</p>
+  </div>
+  <div class="is" id="i13">
+    <h3><span class="dot8" style="background:var(--c-alert)"></span>Step 13 — Grafana Alerting：统一告警规则</h3>
+    <p>Grafana 8+ 内置统一告警，支持对 Prometheus/Loki/Tempo 等多数据源建立告警规则，集中管理通知策略。与 Alertmanager 协同或独立工作，支持 <code>contact points</code> 多渠道通知。</p>
+  </div>
+  <div class="is" id="i14">
+    <h3><span class="dot8" style="background:var(--c-alert)"></span>Step 14 — 通知渠道：闭环响应</h3>
+    <p>告警最终通过 <code>Slack</code>、<code>DingTalk/飞书 Webhook</code>、<code>PagerDuty</code>（on-call 值班）、<code>Email</code> 送达 SRE 团队。配合 <code>Runbook URL</code> 字段链接处置文档，实现从告警到响应的完整闭环。</p>
+  </div>
+</div>
+
+<!-- Ref cards -->
+<div class="refs">
+  <div class="rc te"><h4>🔬 eBPF 核心</h4><ul>
+    <li>Verifier 安全校验</li>
+    <li>JIT 编译执行</li>
+    <li>Maps 零拷贝传递</li>
+    <li>不需重编译内核</li>
+  </ul></div>
+  <div class="rc to"><h4>🔀 OTel Collector</h4><ul>
+    <li>Receiver: OTLP/Prom/Jaeger</li>
+    <li>Processor: batch/sample</li>
+    <li>Exporter: 多后端 fan-out</li>
+    <li>Agent + Gateway 模式</li>
+  </ul></div>
+  <div class="rc tp"><h4>📊 Prometheus</h4><ul>
+    <li>pull scrape / Remote Write</li>
+    <li>Recording Rules 预计算</li>
+    <li>Alerting Rules 触发告警</li>
+    <li>Thanos 水平扩展</li>
+  </ul></div>
+  <div class="rc tl"><h4>📜 Loki</h4><ul>
+    <li>仅索引 label，成本低</li>
+    <li>对象存储（S3/MinIO）</li>
+    <li>LogQL 流式查询</li>
+    <li>Promtail/OTel 采集</li>
+  </ul></div>
+  <div class="rc tt"><h4>🔗 Tempo</h4><ul>
+    <li>仅需对象存储</li>
+    <li>TraceQL 语言</li>
+    <li>Metrics→Trace 跳转</li>
+    <li>Exemplar 关联</li>
+  </ul></div>
+  <div class="rc tg"><h4>📈 Grafana</h4><ul>
+    <li>Explore 三信号联动</li>
+    <li>Correlations 自动关联</li>
+    <li>Unified Alerting</li>
+    <li>Dashboard as Code</li>
+  </ul></div>
+  <div class="rc ta"><h4>🚨 告警闭环</h4><ul>
+    <li>分组 / 抑制 / 静默</li>
+    <li>Runbook URL 链接</li>
+    <li>PagerDuty on-call</li>
+    <li>DingTalk/Slack 通知</li>
+  </ul></div>
+</div>
+
+<footer>eBPF · OpenTelemetry · Prometheus · Loki · Tempo · Grafana · DevOps Observability Stack</footer>
+
+<script>
+const TOTAL = 14;
+let cur=0, timer=null, spd=1500;
+
+const nids=['n0','n1','n2','n3','n4','n5','n6','n7','n8','n9','n10','n11','n12','n13'];
+const hids=['h0','h1','h2','h3','h4','h5','h6','h7','h8','h9'];
+const vcids=['vc0','vc1','vc2'];
+const iels=Array.from({length:TOTAL+1},(_,i)=>document.getElementById('i'+i));
+
+// progress bar segments
+const pgbar=document.getElementById('pgbar');
+const pgColors=[
+  'var(--c-kern)','var(--c-ebpf)','var(--c-ebpf)','var(--c-ebpf)',
+  'var(--c-otel)','var(--c-otel)','var(--c-otel)',
+  'var(--c-prom)','var(--c-loki)','var(--c-tempo)','var(--c-alert)',
+  'var(--c-graf)','var(--c-alert)','var(--c-alert)'
+];
+nids.forEach((_,i)=>{
+  const s=document.createElement('div');s.className='pgseg';
+  const f=document.createElement('div');f.className='pgfill';
+  f.style.background=pgColors[i]||'var(--c-ebpf)';
+  f.id='pgf'+i;s.appendChild(f);pgbar.appendChild(s);
+});
+
+// arrow→node mapping: which arrow lights up before which node
+// arrows: h0(0→1), h1(1→2), h2(2→3), h3(4→5), h4(5→6), h5(7-8), h6(8-9), h7(9-10), h8(11→12), h9(12→13)
+// vconns: vc0 after n3(step4), vc1 after n6(step7), vc2 after n10(step11)
+const arrowAtStep={
+  1:['h0'], 2:['h1'], 3:['h2'],
+  4:['vc0'],
+  5:['h3'], 6:['h4'], 7:[],
+  8:['vc1'],
+  9:['h5'], 10:['h6'], 11:['h7'],
+  12:['vc2'],
+  13:['h8'], 14:['h9']
+};
+
+function apply(s){
+  // nodes
+  nids.forEach((id,i)=>document.getElementById(id).classList.toggle('vis',i<s));
+  // progress
+  nids.forEach((_,i)=>{
+    const f=document.getElementById('pgf'+i);
+    if(f) f.style.width=i<s?'100%':'0%';
+  });
+  // arrows & vconns — light all up to current step
+  hids.forEach(id=>{ const el=document.getElementById(id); if(el)el.classList.remove('flow'); });
+  vcids.forEach(id=>{ const el=document.getElementById(id); if(el)el.classList.remove('flow'); });
+  for(let step=1;step<=s;step++){
+    const arr=arrowAtStep[step]||[];
+    arr.forEach(id=>{ const el=document.getElementById(id); if(el)el.classList.add('flow'); });
+  }
+  // info
+  iels.forEach((el,i)=>el&&el.classList.toggle('show',i===(s===0?0:s)));
+  // stream sim
+  if(s>=12) runStreams();
+}
+
+function runStreams(){
+  const cfg=[
+    {id:'sp0',res:'sr0',cls:'metric',delay:0},
+    {id:'sp1',res:'sr1',cls:'log',   delay:280},
+    {id:'sp2',res:'sr2',cls:'trace', delay:560},
+    {id:'sp3',res:'sr3',cls:'alert', delay:840},
+  ];
+  cfg.forEach(p=>{
+    const el=document.getElementById(p.id);
+    const re=document.getElementById(p.res);
+    el.style.transition='none'; el.style.left='-60px';
+    re.classList.remove('show');
+    setTimeout(()=>{
+      el.style.transition='left 1.15s cubic-bezier(.4,0,.2,1)';
+      el.style.left='calc(100% - 8px)';
+      setTimeout(()=>re.classList.add('show'),1050);
+    },p.delay+60);
+  });
+}
+
+function goTo(s){ cur=Math.max(0,Math.min(TOTAL,s)); apply(cur); }
+function next(){ if(cur<TOTAL) goTo(cur+1); }
+function prev(){ if(cur>0) goTo(cur-1); }
+function startA(){
+  if(timer)return;
+  document.getElementById('bAuto').textContent='⏸ 暂停';
+  timer=setInterval(()=>{ if(cur>=TOTAL){stopA();return;} next(); },spd);
+}
+function stopA(){
+  clearInterval(timer);timer=null;
+  document.getElementById('bAuto').textContent='⏯ 自动播放';
+}
+function reset(){ stopA(); goTo(0); }
+
+document.getElementById('bPlay').onclick=()=>{reset();next();};
+document.getElementById('bNext').onclick=next;
+document.getElementById('bPrev').onclick=prev;
+document.getElementById('bAuto').onclick=()=>timer?stopA():startA();
+document.getElementById('bReset').onclick=reset;
+document.getElementById('spd').oninput=function(){
+  spd=parseInt(this.value);
+  document.getElementById('spdLbl').textContent=(spd/1000).toFixed(1)+'s';
+  if(timer){stopA();startA();}
+};
+
+apply(0);
+</script>
+</body>
+</html>

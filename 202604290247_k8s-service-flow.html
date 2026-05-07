@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s Service 流量链路图</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@400;700;900&display=swap');
+
+:root{
+  --bg:#edf1f7;
+  --card:#ffffff;
+  --border:#ccd6e8;
+  --text:#17253b;
+  --muted:#566a85;
+
+  --c-client:#0369a1;
+  --c-svc:#7c3aed;
+  --c-ep:#0891b2;
+  --c-proxy:#d97706;
+  --c-ipt:#dc2626;
+  --c-ipvs:#059669;
+  --c-pod:#2563eb;
+  --c-dns:#be185d;
+
+  --sh:0 4px 28px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);font-family:'Noto Sans SC',sans-serif;
+     color:var(--text);min-height:100vh;padding:28px 14px 56px;}
+
+/* header */
+header{text-align:center;margin-bottom:22px;}
+header h1{font-size:clamp(1.55rem,4vw,2.55rem);font-weight:900;letter-spacing:-1px;line-height:1.15;}
+header h1 em{color:var(--c-svc);font-style:normal;}
+header p{margin-top:7px;font-family:'JetBrains Mono',monospace;font-size:.83rem;color:var(--muted);}
+
+/* controls */
+.ctrl{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-bottom:16px;}
+.btn{padding:8px 18px;border:2px solid var(--border);border-radius:8px;
+     background:var(--card);color:var(--text);
+     font-family:'JetBrains Mono',monospace;font-size:.8rem;font-weight:700;
+     cursor:pointer;transition:all .16s;}
+.btn:hover{border-color:var(--c-svc);color:var(--c-svc);transform:translateY(-1px);}
+.btn.pri{background:var(--c-svc);color:#fff;border-color:var(--c-svc);}
+.btn.pri:hover{background:#6d28d9;border-color:#6d28d9;color:#fff;}
+.btn.red{border-color:var(--c-ipt);color:var(--c-ipt);}
+.btn.red:hover{background:var(--c-ipt);color:#fff;}
+
+.spd-row{display:flex;align-items:center;gap:9px;justify-content:center;
+         margin-bottom:20px;font-size:.8rem;color:var(--muted);
+         font-family:'JetBrains Mono',monospace;}
+input[type=range]{accent-color:var(--c-svc);width:100px;}
+
+/* progress dots */
+.dots{display:flex;justify-content:center;gap:8px;margin-bottom:22px;}
+.dot{width:28px;height:5px;border-radius:3px;background:var(--border);transition:background .35s;}
+.dot.on{background:var(--c-svc);}
+
+/* ══ MAIN DIAGRAM ══ */
+.diagram{
+  max-width:1180px;margin:0 auto;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:20px;padding:32px 20px 28px;
+  box-shadow:var(--sh);position:relative;overflow:hidden;
+}
+.diagram::before{
+  content:'';position:absolute;inset:0;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:42px 42px;opacity:.25;pointer-events:none;
+}
+
+/* SVG overlay */
+.dsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;}
+
+/* node grid – 5 columns, 3 rows */
+.dgrid{
+  position:relative;z-index:2;
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  grid-template-rows:repeat(3,auto);
+  gap:18px 14px;
+}
+
+/* node */
+.nd{
+  border:2.5px solid transparent;border-radius:14px;
+  background:var(--card);padding:16px 12px 13px;
+  text-align:center;position:relative;
+  transition:opacity .35s,transform .35s,box-shadow .35s;
+  opacity:.22;transform:scale(.93);
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.nd.vis{opacity:1;transform:scale(1);}
+
+.nd .ico{font-size:1.9rem;line-height:1;margin-bottom:7px;}
+.nd .lbl{font-family:'JetBrains Mono',monospace;font-size:.76rem;font-weight:700;letter-spacing:.3px;}
+.nd .sub{font-size:.65rem;color:var(--muted);margin-top:5px;line-height:1.55;}
+
+/* badge */
+.badge{position:absolute;top:-9px;right:-9px;width:19px;height:19px;
+       border-radius:50%;background:var(--c-svc);color:#fff;
+       font-size:.58rem;font-weight:900;
+       display:flex;align-items:center;justify-content:center;
+       opacity:0;transition:opacity .3s .12s;}
+.nd.vis .badge{opacity:1;}
+
+/* colour themes */
+.tc  {border-color:var(--c-client); box-shadow:0 0 20px rgba(3,105,161,.14);}
+.tc  .lbl{color:var(--c-client);}
+.ts  {border-color:var(--c-svc);   box-shadow:0 0 20px rgba(124,58,237,.16);}
+.ts  .lbl{color:var(--c-svc);}
+.te  {border-color:var(--c-ep);    box-shadow:0 0 20px rgba(8,145,178,.14);}
+.te  .lbl{color:var(--c-ep);}
+.tpr {border-color:var(--c-proxy); box-shadow:0 0 20px rgba(217,119,6,.14);}
+.tpr .lbl{color:var(--c-proxy);}
+.tit {border-color:var(--c-ipt);   box-shadow:0 0 20px rgba(220,38,38,.14);}
+.tit .lbl{color:var(--c-ipt);}
+.tiv {border-color:var(--c-ipvs);  box-shadow:0 0 20px rgba(5,150,105,.14);}
+.tiv .lbl{color:var(--c-ipvs);}
+.tp  {border-color:var(--c-pod);   box-shadow:0 0 20px rgba(37,99,235,.14);}
+.tp  .lbl{color:var(--c-pod);}
+.td  {border-color:var(--c-dns);   box-shadow:0 0 20px rgba(190,24,93,.14);}
+.td  .lbl{color:var(--c-dns);}
+
+/* span helpers */
+.s2{grid-column:span 2;}
+
+/* ══ PACKET ANIMATION ══ */
+.pkt-layer{
+  max-width:1180px;margin:18px auto 0;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:16px;padding:22px 26px;box-shadow:var(--sh);
+}
+.pkt-layer h3{
+  font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700;
+  color:var(--c-svc);margin-bottom:14px;
+}
+.lanes{display:flex;flex-direction:column;gap:13px;}
+.lane{display:flex;align-items:center;gap:10px;}
+.llbl{font-family:'JetBrains Mono',monospace;font-size:.69rem;
+      color:var(--muted);width:120px;flex-shrink:0;text-align:right;}
+.track{flex:1;height:26px;background:#f3f6fb;border:1px solid var(--border);
+       border-radius:13px;position:relative;overflow:hidden;}
+.pkt{position:absolute;top:50%;left:-50px;transform:translateY(-50%);
+     height:18px;border-radius:9px;padding:0 10px;
+     font-size:.63rem;font-weight:700;font-family:'JetBrains Mono',monospace;
+     display:flex;align-items:center;white-space:nowrap;}
+.pkt.ok {background:rgba(5,150,105,.12);color:var(--c-ipvs);border:1.5px solid var(--c-ipvs);}
+.pkt.warn{background:rgba(217,119,6,.12);color:var(--c-proxy);border:1.5px solid var(--c-proxy);}
+.pkt.bad{background:rgba(220,38,38,.11);color:var(--c-ipt);border:1.5px solid var(--c-ipt);}
+.lres{width:54px;flex-shrink:0;font-size:.72rem;font-weight:700;
+      font-family:'JetBrains Mono',monospace;text-align:center;
+      opacity:0;transition:opacity .3s;}
+.lres.show{opacity:1;}
+.lres.ok{color:var(--c-ipvs);} .lres.warn{color:var(--c-proxy);} .lres.bad{color:var(--c-ipt);}
+
+/* ══ INFO PANEL ══ */
+.info{max-width:1180px;margin:16px auto 0;
+      background:var(--card);border:1px solid var(--border);
+      border-radius:16px;padding:20px 24px;box-shadow:var(--sh);min-height:96px;}
+.is{display:none;animation:fsl .33s ease;}
+.is.show{display:block;}
+@keyframes fsl{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.is h3{font-family:'JetBrains Mono',monospace;font-size:.85rem;font-weight:700;
+        margin-bottom:8px;display:flex;align-items:center;gap:9px;}
+.dbl{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.is p{font-size:.82rem;color:var(--muted);line-height:1.9;}
+.is code{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+          padding:1px 6px;font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--text);}
+
+/* ══ REF CARDS ══ */
+.refs{max-width:1180px;margin:20px auto 0;
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:13px;}
+.rc{background:var(--card);border:1px solid var(--border);border-radius:11px;
+    padding:16px;border-left:4px solid transparent;
+    transition:transform .18s,box-shadow .18s;box-shadow:0 1px 5px rgba(0,0,0,.04);}
+.rc:hover{transform:translateY(-2px);box-shadow:0 5px 18px rgba(0,0,0,.08);}
+.rc.tc {border-left-color:var(--c-client);}
+.rc.ts {border-left-color:var(--c-svc);}
+.rc.te {border-left-color:var(--c-ep);}
+.rc.tpr{border-left-color:var(--c-proxy);}
+.rc.tit{border-left-color:var(--c-ipt);}
+.rc.tiv{border-left-color:var(--c-ipvs);}
+.rc.tp {border-left-color:var(--c-pod);}
+.rc.td {border-left-color:var(--c-dns);}
+.rc h4{font-family:'JetBrains Mono',monospace;font-size:.75rem;font-weight:700;margin-bottom:7px;}
+.rc.tc h4{color:var(--c-client);} .rc.ts h4{color:var(--c-svc);}
+.rc.te h4{color:var(--c-ep);}     .rc.tpr h4{color:var(--c-proxy);}
+.rc.tit h4{color:var(--c-ipt);}   .rc.tiv h4{color:var(--c-ipvs);}
+.rc.tp  h4{color:var(--c-pod);}   .rc.td h4{color:var(--c-dns);}
+.rc ul{list-style:none;font-size:.72rem;color:var(--muted);line-height:2.1;}
+.rc ul li::before{content:'▸ ';opacity:.4;}
+
+footer{text-align:center;margin-top:36px;font-size:.7rem;
+       color:#b0bec5;font-family:'JetBrains Mono',monospace;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>K8s <em>Service</em> 流量链路图</h1>
+  <p>Client → DNS → ClusterIP → kube-proxy → iptables/IPVS → Endpoint → Pod</p>
+</header>
+
+<!-- Controls -->
+<div class="ctrl">
+  <button class="btn pri" id="bPlay">▶ 开始演示</button>
+  <button class="btn" id="bPrev">◀ 上一步</button>
+  <button class="btn" id="bNext">▶ 下一步</button>
+  <button class="btn" id="bAuto">⏯ 自动播放</button>
+  <button class="btn red" id="bReset">↺ 重置</button>
+</div>
+<div class="spd-row">
+  速度: <input type="range" id="spd" min="500" max="3000" value="1500" step="100">
+  <span id="spdLbl">1.5s</span>
+</div>
+<div class="dots" id="dots"></div>
+
+<!-- ══ Diagram ══ -->
+<div class="diagram" id="diag">
+  <svg class="dsvg" id="dsvg"></svg>
+  <div class="dgrid">
+
+    <!-- Row 1 -->
+    <div class="nd tc" id="n0" style="grid-column:1;grid-row:1">
+      <div class="badge">1</div><div class="ico">🖥️</div>
+      <div class="lbl">Client / Pod</div>
+      <div class="sub">集群内/外<br>发起请求方</div>
+    </div>
+
+    <div class="nd td" id="n1" style="grid-column:2;grid-row:1">
+      <div class="badge">2</div><div class="ico">🔍</div>
+      <div class="lbl">CoreDNS</div>
+      <div class="sub">svc-name.ns.svc<br>.cluster.local</div>
+    </div>
+
+    <div class="nd ts s2" id="n2" style="grid-column:3/5;grid-row:1">
+      <div class="badge">3</div><div class="ico">🌐</div>
+      <div class="lbl">Service · ClusterIP</div>
+      <div class="sub">虚拟 IP（VIP）· 稳定访问入口<br>spec.clusterIP / spec.ports</div>
+    </div>
+
+    <div class="nd tpr" id="n3" style="grid-column:5;grid-row:1">
+      <div class="badge">4</div><div class="ico">⚙️</div>
+      <div class="lbl">kube-proxy</div>
+      <div class="sub">Watch API Server<br>同步规则到内核</div>
+    </div>
+
+    <!-- Row 2 -->
+    <div class="nd te s2" id="n4" style="grid-column:1/3;grid-row:2">
+      <div class="badge">5</div><div class="ico">📋</div>
+      <div class="lbl">Endpoints / EndpointSlice</div>
+      <div class="sub">记录就绪 Pod IP:Port<br>由 EndpointController 维护</div>
+    </div>
+
+    <div class="nd tit" id="n5" style="grid-column:3;grid-row:2">
+      <div class="badge">6</div><div class="ico">🔥</div>
+      <div class="lbl">iptables</div>
+      <div class="sub">DNAT 规则链<br>随机/轮询转发</div>
+    </div>
+
+    <div class="nd tiv" id="n6" style="grid-column:4;grid-row:2">
+      <div class="badge">7</div><div class="ico">⚡</div>
+      <div class="lbl">IPVS</div>
+      <div class="sub">LVS 内核模块<br>rr/lc/sh 等算法</div>
+    </div>
+
+    <div class="nd tpr" id="n7" style="grid-column:5;grid-row:2">
+      <div class="badge">8</div><div class="ico">🗺️</div>
+      <div class="lbl">API Server</div>
+      <div class="sub">Watch Service<br>& Endpoints</div>
+    </div>
+
+    <!-- Row 3 -->
+    <div class="nd tp" id="n8" style="grid-column:1;grid-row:3">
+      <div class="badge">9</div><div class="ico">🔵</div>
+      <div class="lbl">Pod A</div>
+      <div class="sub">containerPort<br>label: app=web</div>
+    </div>
+    <div class="nd tp" id="n9" style="grid-column:2;grid-row:3">
+      <div class="badge">10</div><div class="ico">🔵</div>
+      <div class="lbl">Pod B</div>
+      <div class="sub">containerPort<br>label: app=web</div>
+    </div>
+    <div class="nd tp" id="n10" style="grid-column:3;grid-row:3">
+      <div class="badge">11</div><div class="ico">🔵</div>
+      <div class="lbl">Pod C</div>
+      <div class="sub">containerPort<br>label: app=web</div>
+    </div>
+    <div class="nd ts" id="n11" style="grid-column:4;grid-row:3">
+      <div class="badge">12</div><div class="ico">🔗</div>
+      <div class="lbl">NodePort /<br>LoadBalancer</div>
+      <div class="sub">外部流量入口<br>30000-32767</div>
+    </div>
+    <div class="nd tc" id="n12" style="grid-column:5;grid-row:3">
+      <div class="badge">13</div><div class="ico">🌍</div>
+      <div class="lbl">External<br>Client</div>
+      <div class="sub">集群外部<br>访问入口</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Packet simulation -->
+<div class="pkt-layer">
+  <h3>🚦 数据包转发模拟</h3>
+  <div class="lanes">
+    <div class="lane">
+      <div class="llbl">DNS 解析</div>
+      <div class="track"><div class="pkt ok" id="pk0">svc-name → 10.96.x.x ▶</div></div>
+      <div class="lres ok" id="rs0">✅ 解析</div>
+    </div>
+    <div class="lane">
+      <div class="llbl">ClusterIP DNAT</div>
+      <div class="track"><div class="pkt warn" id="pk1">VIP:80 → PodIP:8080 ▶</div></div>
+      <div class="lres warn" id="rs1">🔀 DNAT</div>
+    </div>
+    <div class="lane">
+      <div class="llbl">iptables 转发</div>
+      <div class="track"><div class="pkt ok" id="pk2">PREROUTING → PodA ▶</div></div>
+      <div class="lres ok" id="rs2">✅ 转发</div>
+    </div>
+    <div class="lane">
+      <div class="llbl">IPVS 负载均衡</div>
+      <div class="track"><div class="pkt ok" id="pk3">rr: → PodB ▶</div></div>
+      <div class="lres ok" id="rs3">✅ 均衡</div>
+    </div>
+    <div class="lane">
+      <div class="llbl">Pod 未就绪</div>
+      <div class="track"><div class="pkt bad" id="pk4">Endpoint not ready ▶</div></div>
+      <div class="lres bad" id="rs4">🚫 剔除</div>
+    </div>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div class="info">
+  <div class="is show" id="i0">
+    <h3><span class="dbl" style="background:var(--c-svc)"></span>准备就绪 — 点击开始演示</h3>
+    <p>本图展示 K8s Service 完整流量链路：<code>Client</code> → <code>CoreDNS</code> → <code>ClusterIP</code> → <code>kube-proxy</code> → <code>iptables/IPVS</code> → <code>Endpoint</code> → <code>Pod</code>，涵盖 NodePort/LoadBalancer 外部入口。</p>
+  </div>
+  <div class="is" id="i1">
+    <h3><span class="dbl" style="background:var(--c-client)"></span>Step 1 — Client / Pod：请求发起方</h3>
+    <p>集群内 Pod 或集群外客户端发起请求。集群内访问使用 <code>serviceName.namespace.svc.cluster.local</code> 域名，由 Pod 的 <code>/etc/resolv.conf</code> 指向 CoreDNS 解析。</p>
+  </div>
+  <div class="is" id="i2">
+    <h3><span class="dbl" style="background:var(--c-dns)"></span>Step 2 — CoreDNS：服务发现</h3>
+    <p>CoreDNS 监听 UDP/TCP 53，将 Service 域名解析为 <code>ClusterIP</code>（虚拟 IP）。<code>ndots:5</code> 搜索域确保短名称可被补全。Headless Service（<code>clusterIP: None</code>）直接返回 Pod IP 列表。</p>
+  </div>
+  <div class="is" id="i3">
+    <h3><span class="dbl" style="background:var(--c-svc)"></span>Step 3 — Service · ClusterIP：虚拟入口</h3>
+    <p><code>ClusterIP</code> 是仅在集群内可路由的虚拟 IP，由 kube-apiserver 分配，本身没有对应网卡。流量到达 ClusterIP 后由内核 iptables/IPVS 规则进行 DNAT，转发到真实 Pod IP。</p>
+  </div>
+  <div class="is" id="i4">
+    <h3><span class="dbl" style="background:var(--c-proxy)"></span>Step 4 — kube-proxy：规则同步器</h3>
+    <p>kube-proxy 以 DaemonSet 运行在每个节点，Watch <code>Service</code> 和 <code>Endpoints</code> 变化，将规则写入内核。支持三种模式：<code>userspace</code>（废弃）、<code>iptables</code>（默认）、<code>ipvs</code>（高性能）。</p>
+  </div>
+  <div class="is" id="i5">
+    <h3><span class="dbl" style="background:var(--c-ep)"></span>Step 5 — Endpoints / EndpointSlice：后端列表</h3>
+    <p><code>Endpoints</code> 对象记录所有就绪 Pod 的 IP:Port，由 EndpointController 根据 Pod <code>readinessProbe</code> 动态维护。K8s 1.21+ 默认启用 <code>EndpointSlice</code>，解决大规模集群 Endpoints 对象过大问题。</p>
+  </div>
+  <div class="is" id="i6">
+    <h3><span class="dbl" style="background:var(--c-ipt)"></span>Step 6 — iptables：内核链路转发</h3>
+    <p>kube-proxy 在 <code>PREROUTING</code> 和 <code>OUTPUT</code> 链插入 DNAT 规则，将目标 ClusterIP:Port 随机替换为某个 PodIP:Port。规则数量随 Service/Pod 数线性增长，大规模场景（>5000 Service）性能下降明显。</p>
+  </div>
+  <div class="is" id="i7">
+    <h3><span class="dbl" style="background:var(--c-ipvs)"></span>Step 7 — IPVS：高性能负载均衡</h3>
+    <p>IPVS 基于内核 LVS 模块，使用哈希表匹配，O(1) 时间复杂度，支持 <code>rr</code>（轮询）、<code>lc</code>（最少连接）、<code>sh</code>（源哈希）等算法。启用方式：kube-proxy <code>--proxy-mode=ipvs</code>，需节点安装 <code>ipvsadm</code> 和加载内核模块。</p>
+  </div>
+  <div class="is" id="i8">
+    <h3><span class="dbl" style="background:var(--c-proxy)"></span>Step 8 — API Server：控制平面枢纽</h3>
+    <p>kube-proxy、EndpointController、CoreDNS 均通过 Watch 机制订阅 API Server 的 Service/Endpoints 变更事件，形成控制闭环：<code>kubectl apply → API Server → etcd → Watch → 各组件同步</code>。</p>
+  </div>
+  <div class="is" id="i9">
+    <h3><span class="dbl" style="background:var(--c-pod)"></span>Step 9-11 — Pod 副本：实际处理流量</h3>
+    <p>后端 Pod 通过 <code>spec.selector</code> 标签被 Service 选中。Pod 就绪（readinessProbe 通过）后加入 Endpoints；Pod 终止或探针失败时从 Endpoints 摘除，实现零中断滚动更新。</p>
+  </div>
+  <div class="is" id="i10">
+    <h3><span class="dbl" style="background:var(--c-svc)"></span>Step 12 — NodePort / LoadBalancer：外部入口</h3>
+    <p><code>NodePort</code> 在每个节点开放 30000-32767 端口，外部流量 → NodeIP:NodePort → ClusterIP → Pod。<code>LoadBalancer</code> 在云厂商创建外部 LB，自动分配公网 IP，底层仍依赖 NodePort 机制。</p>
+  </div>
+  <div class="is" id="i11">
+    <h3><span class="dbl" style="background:var(--c-client)"></span>Step 13 — External Client：集群外访问</h3>
+    <p>外部客户端通过 <code>NodeIP:NodePort</code> 或云 LB 公网 IP 访问集群。<code>externalTrafficPolicy: Local</code> 可保留源 IP（仅转发到本地节点 Pod，避免二次跳转），<code>Cluster</code> 模式则全局均衡但丢失源 IP。</p>
+  </div>
+  <div class="is" id="i12">
+    <h3><span class="dbl" style="background:var(--c-ipvs)"></span>数据包模拟 — 全链路流转</h3>
+    <p>查看下方动画：DNS 解析 ClusterIP → DNAT 替换目标 IP → iptables/IPVS 选择后端 Pod → Pod 处理并响应。未就绪 Pod 被 Endpoints 剔除，不会收到流量。</p>
+  </div>
+</div>
+
+<!-- Ref cards -->
+<div class="refs">
+  <div class="rc tc"><h4>🖥️ Client 访问方式</h4><ul>
+    <li>集群内: svc.ns.svc.cluster.local</li>
+    <li>集群内: ClusterIP:Port 直连</li>
+    <li>集群外: NodeIP:NodePort</li>
+    <li>集群外: LB 公网 IP</li>
+  </ul></div>
+  <div class="rc ts"><h4>🌐 Service 类型</h4><ul>
+    <li>ClusterIP（默认，仅内部）</li>
+    <li>NodePort（节点端口暴露）</li>
+    <li>LoadBalancer（云 LB）</li>
+    <li>ExternalName（CNAME 代理）</li>
+  </ul></div>
+  <div class="rc te"><h4>📋 Endpoints 要点</h4><ul>
+    <li>readinessProbe 控制加入/摘除</li>
+    <li>EndpointSlice 分片解决规模问题</li>
+    <li>kubectl get ep 查看后端列表</li>
+    <li>Headless 直接返回 Pod IP</li>
+  </ul></div>
+  <div class="rc tpr"><h4>⚙️ kube-proxy 模式</h4><ul>
+    <li>iptables: 默认，规则链 O(n)</li>
+    <li>ipvs: 高性能 O(1) 哈希匹配</li>
+    <li>--proxy-mode=ipvs 启用</li>
+    <li>需加载 ip_vs 内核模块</li>
+  </ul></div>
+  <div class="rc tit"><h4>🔥 iptables 链路</h4><ul>
+    <li>PREROUTING → KUBE-SERVICES</li>
+    <li>KUBE-SVC-xxx → KUBE-SEP-xxx</li>
+    <li>statistic 模块随机选择</li>
+    <li>conntrack 保证会话一致性</li>
+  </ul></div>
+  <div class="rc tiv"><h4>⚡ IPVS 调度算法</h4><ul>
+    <li>rr: 轮询（默认）</li>
+    <li>lc: 最少连接数</li>
+    <li>sh: 源地址哈希</li>
+    <li>ipvsadm -Ln 查看规则</li>
+  </ul></div>
+  <div class="rc tp"><h4>🔵 Pod 健康管理</h4><ul>
+    <li>readinessProbe: 流量摘除</li>
+    <li>livenessProbe: 重启容器</li>
+    <li>terminationGracePeriodSeconds</li>
+    <li>preStop hook 优雅退出</li>
+  </ul></div>
+  <div class="rc td"><h4>🔍 CoreDNS 配置</h4><ul>
+    <li>ConfigMap: coredns (kube-system)</li>
+    <li>ndots:5 搜索域补全</li>
+    <li>cache 插件减少上游查询</li>
+    <li>hosts/rewrite 自定义解析</li>
+  </ul></div>
+</div>
+
+<footer>K8s Service Flow · ClusterIP · kube-proxy · iptables · IPVS · DevOps Lab</footer>
+
+<script>
+const TOTAL = 12;
+let cur = 0, timer = null, spd = 1500;
+
+const nids = ['n0','n1','n2','n3','n4','n5','n6','n7','n8','n9','n10','n11','n12'];
+const iids = Array.from({length:TOTAL+1},(_,i)=>document.getElementById('i'+i));
+
+// dots
+const dotWrap = document.getElementById('dots');
+nids.forEach((_,i)=>{
+  const d=document.createElement('div');
+  d.className='dot'; d.id='dt'+i;
+  dotWrap.appendChild(d);
+});
+
+function apply(s){
+  nids.forEach((id,i)=>document.getElementById(id).classList.toggle('vis',i<s));
+  iids.forEach((el,i)=>el&&el.classList.toggle('show',i===(s===0?0:s)));
+  nids.forEach((_,i)=>{ const d=document.getElementById('dt'+i); if(d)d.classList.toggle('on',i<s); });
+  if(s>=10) runPkts();
+}
+function goTo(s){ cur=Math.max(0,Math.min(TOTAL,s)); apply(cur); }
+function next(){ if(cur<TOTAL) goTo(cur+1); }
+function prev(){ if(cur>0) goTo(cur-1); }
+function startA(){
+  if(timer)return;
+  document.getElementById('bAuto').textContent='⏸ 暂停';
+  timer=setInterval(()=>{ if(cur>=TOTAL){stopA();return;} next(); },spd);
+}
+function stopA(){
+  clearInterval(timer);timer=null;
+  document.getElementById('bAuto').textContent='⏯ 自动播放';
+}
+function reset(){ stopA(); goTo(0); }
+
+function runPkts(){
+  const cfg=[
+    {id:'pk0',res:'rs0',cls:'ok', delay:0},
+    {id:'pk1',res:'rs1',cls:'warn',delay:250},
+    {id:'pk2',res:'rs2',cls:'ok', delay:500},
+    {id:'pk3',res:'rs3',cls:'ok', delay:750},
+    {id:'pk4',res:'rs4',cls:'bad',delay:1000},
+  ];
+  cfg.forEach(p=>{
+    const el=document.getElementById(p.id);
+    const re=document.getElementById(p.res);
+    el.style.transition='none'; el.style.left='-50px';
+    re.classList.remove('show');
+    setTimeout(()=>{
+      el.style.transition='left 1.1s cubic-bezier(.4,0,.2,1)';
+      el.style.left=p.cls==='bad'?'48%':'calc(100% - 8px)';
+      setTimeout(()=>re.classList.add('show'),980);
+    },p.delay+60);
+  });
+}
+
+document.getElementById('bPlay').onclick=()=>{reset();next();};
+document.getElementById('bNext').onclick=next;
+document.getElementById('bPrev').onclick=prev;
+document.getElementById('bAuto').onclick=()=>timer?stopA():startA();
+document.getElementById('bReset').onclick=reset;
+document.getElementById('spd').oninput=function(){
+  spd=parseInt(this.value);
+  document.getElementById('spdLbl').textContent=(spd/1000).toFixed(1)+'s';
+  if(timer){stopA();startA();}
+};
+
+apply(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Istio 可观察性 11 步动态图</title>
+<style>
+:root {
+  --speed: 1.0s;
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --text: #111827;
+  --muted: #6b7280;
+  --accent: #4f46e5;
+  --metrics: #16a34a;
+  --logs: #ea580c;
+  --traces: #0891b2;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  background: var(--bg);
+  color: var(--text);
+}
+.page {
+  max-width: 1200px;
+  margin: 32px auto 48px;
+  padding: 0 16px;
+}
+h1 {
+  text-align: center;
+  font-size: 28px;
+  margin: 0 0 8px;
+}
+.subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.speed-control input[type=range] {
+  width: 140px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr 1.1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.06);
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.card-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  margin: 2px 4px 2px 0;
+}
+.pill.metrics { background: rgba(22,163,74,.12); color: var(--metrics); }
+.pill.logs { background: rgba(234,88,12,.12); color: var(--logs); }
+.pill.traces { background: rgba(8,145,178,.12); color: var(--traces); }
+.pill.ctrl { background: #e5e7eb; color: #374151; }
+
+.diagram-wrap {
+  margin-top: 18px;
+  background: #f9fafb;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+.diagram-svg {
+  width: 100%;
+  height: auto;
+}
+.node {
+  fill: #ffffff;
+  stroke: #cbd5e1;
+  stroke-width: 1;
+  rx: 8;
+}
+.node-label {
+  font-size: 11px;
+  fill: #111827;
+}
+.node-sub {
+  font-size: 9px;
+  fill: #6b7280;
+}
+.arrow {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  opacity: .18;
+}
+.arrow.metrics { stroke: var(--metrics); }
+.arrow.logs { stroke: var(--logs); }
+.arrow.traces { stroke: var(--traces); }
+.arrow.active {
+  opacity: 1;
+  animation: dash var(--speed) linear forwards;
+}
+@keyframes dash {
+  from { stroke-dashoffset: 80; }
+  to { stroke-dashoffset: 0; }
+}
+
+.steps-panel {
+  margin-top: 18px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 10px 14px 12px;
+}
+.step-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.step-desc {
+  font-size: 12px;
+  color: var(--muted);
+}
+.step-list {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.step-list span.current {
+  color: var(--accent);
+  font-weight: 600;
+}
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Istio 可观察性 11 步动态图</h1>
+  <div class="subtitle">展示 Metrics / Logs / Traces 在 Istio 服务网格中的完整流向（带步骤控制与速度调节）</div>
+
+  <div class="controls">
+    <button id="btn-prev" class="btn">上一步</button>
+    <button id="btn-next" class="btn primary">下一步</button>
+    <button id="btn-reset" class="btn">重置</button>
+    <div class="speed-control">
+      <span>速度：</span>
+      <input id="speed-range" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+      <span id="speed-label">1.0x</span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">工作负载层</div>
+      <div class="card-sub">Kubernetes Pod / 应用服务</div>
+      <span class="pill metrics">应用自定义 Metrics</span>
+      <span class="pill logs">应用日志</span>
+      <span class="pill traces">Trace Header</span>
+      <span class="pill ctrl">业务逻辑</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">服务网格与采集层</div>
+      <div class="card-sub">Envoy Sidecar / Istio Telemetry / OTel Collector</div>
+      <span class="pill metrics">Envoy 指标</span>
+      <span class="pill logs">Access Log</span>
+      <span class="pill traces">Span / Trace</span>
+      <span class="pill ctrl">路由 / mTLS / 策略</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">后端与可视化层</div>
+      <div class="card-sub">Prometheus / Loki / Tempo / Grafana / Kiali</div>
+      <span class="pill metrics">Prometheus / Grafana</span>
+      <span class="pill logs">Loki / Elasticsearch</span>
+      <span class="pill traces">Tempo / Jaeger</span>
+      <span class="pill ctrl">Kiali 服务拓扑</span>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg class="diagram-svg" viewBox="0 0 900 260" preserveAspectRatio="xMidYMid meet">
+      <!-- 左侧节点：Workload -->
+      <rect class="node" x="40" y="40" width="180" height="60" />
+      <text class="node-label" x="60" y="62">应用 Pod / Service</text>
+      <text class="node-sub" x="60" y="80">业务容器 + 应用指标 / 日志 / Trace Header</text>
+
+      <!-- 中间节点：Envoy / Telemetry / OTel -->
+      <rect class="node" x="360" y="30" width="180" height="70" />
+      <text class="node-label" x="380" y="52">Envoy Sidecar</text>
+      <text class="node-sub" x="380" y="70">采集 Metrics / Logs / Traces</text>
+
+      <rect class="node" x="360" y="120" width="180" height="50" />
+      <text class="node-label" x="380" y="142">Istio Telemetry</text>
+      <text class="node-sub" x="380" y="158">配置 Envoy 指标上报</text>
+
+      <rect class="node" x="360" y="190" width="180" height="50" />
+      <text class="node-label" x="380" y="212">OpenTelemetry Collector</text>
+      <text class="node-sub" x="380" y="228">统一处理 Traces</text>
+
+      <!-- 右侧节点：后端 -->
+      <rect class="node" x="680" y="30" width="180" height="60" />
+      <text class="node-label" x="700" y="52">Prometheus</text>
+      <text class="node-sub" x="700" y="70">存储 Metrics</text>
+
+      <rect class="node" x="680" y="110" width="180" height="60" />
+      <text class="node-label" x="700" y="132">Loki / Elasticsearch</text>
+      <text class="node-sub" x="700" y="150">存储 Logs</text>
+
+      <rect class="node" x="680" y="190" width="180" height="60" />
+      <text class="node-label" x="700" y="212">Tempo / Jaeger</text>
+      <text class="node-sub" x="700" y="230">存储 Traces</text>
+
+      <!-- 可视化：Grafana / Kiali -->
+      <rect class="node" x="680" y="5" width="120" height="20" />
+      <text class="node-sub" x="686" y="20">Grafana / Kiali</text>
+
+      <!-- Metrics 路径：Pod -> Envoy -> Telemetry -> Prometheus -> Grafana -->
+      <path id="path-m1" class="arrow metrics" data-steps="1,2,3,4"
+            d="M220 70 C 260 70 320 65 360 65" />
+      <path id="path-m2" class="arrow metrics" data-steps="2,3"
+            d="M450 100 C 470 110 500 110 540 90 600 70 650 60 680 60" />
+      <path id="path-m3" class="arrow metrics" data-steps="3,4"
+            d="M770 60 C 770 40 770 30 740 20" />
+
+      <!-- Logs 路径：Envoy -> Loki -->
+      <path id="path-l1" class="arrow logs" data-steps="5,6,7"
+            d="M450 65 C 500 90 560 120 680 140" />
+
+      <!-- Traces 路径：Envoy -> OTel -> Tempo -> Kiali -->
+      <path id="path-t1" class="arrow traces" data-steps="8,9,10,11"
+            d="M450 65 C 470 150 520 210 680 220" />
+      <path id="path-t2" class="arrow traces" data-steps="10,11"
+            d="M770 220 C 770 200 770 190 740 20" />
+
+      <!-- 动画用小圆点（沿路径移动） -->
+      <circle id="dot-m" r="4" fill="var(--metrics)" opacity="0">
+        <animateMotion id="anim-m" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+      <circle id="dot-l" r="4" fill="var(--logs)" opacity="0">
+        <animateMotion id="anim-l" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+      <circle id="dot-t" r="4" fill="var(--traces)" opacity="0">
+        <animateMotion id="anim-t" dur="1s" repeatCount="1" fill="freeze" />
+      </circle>
+    </svg>
+  </div>
+
+  <div class="steps-panel">
+    <div class="step-title">当前步骤：<span id="step-index">1 / 11</span></div>
+    <div class="step-desc" id="step-text"></div>
+    <div class="step-list" id="step-list"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const steps = [
+    { id:1, type:'metrics', text:'步骤 1：Envoy 从应用 Pod 接收请求并开始采集 Metrics（QPS、延迟、错误率等）。' },
+    { id:2, type:'metrics', text:'步骤 2：Istio Telemetry 为 Envoy 配置指标上报规则，准备被 Prometheus 抓取。' },
+    { id:3, type:'metrics', text:'步骤 3：Prometheus 定期 Scrape Envoy / Telemetry 暴露的 Metrics 接口。' },
+    { id:4, type:'metrics', text:'步骤 4：Grafana 基于 Prometheus 中的 Metrics 构建可视化看板与告警。' },
+    { id:5, type:'logs',    text:'步骤 5：Envoy 为每个请求生成 Access Log（包含路径、状态码、延迟等）。' },
+    { id:6, type:'logs',    text:'步骤 6：Fluent Bit / Promtail 从 Envoy / 容器日志中收集日志数据。' },
+    { id:7, type:'logs',    text:'步骤 7：日志被写入 Loki / Elasticsearch，支持检索与分析。' },
+    { id:8, type:'traces',  text:'步骤 8：Envoy 为请求生成 Trace Span，并注入 Trace ID / Span ID。' },
+    { id:9, type:'traces',  text:'步骤 9：OpenTelemetry Collector 接收来自 Envoy / SDK 的 Trace 数据并进行处理。' },
+    { id:10,type:'traces',  text:'步骤 10：处理后的 Trace 被写入 Tempo / Jaeger 等后端存储。' },
+    { id:11,type:'traces',  text:'步骤 11：Kiali / Grafana 基于 Traces 构建服务调用拓扑与链路分析视图。' }
+  ];
+
+  const stepText = document.getElementById('step-text');
+  const stepIndex = document.getElementById('step-index');
+  const stepList = document.getElementById('step-list');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const btnReset = document.getElementById('btn-reset');
+  const speedRange = document.getElementById('speed-range');
+  const speedLabel = document.getElementById('speed-label');
+
+  const arrows = Array.from(document.querySelectorAll('.arrow'));
+  const dotM = document.getElementById('dot-m');
+  const dotL = document.getElementById('dot-l');
+  const dotT = document.getElementById('dot-t');
+  const animM = document.getElementById('anim-m');
+  const animL = document.getElementById('anim-l');
+  const animT = document.getElementById('anim-t');
+
+  let current = 1;
+
+  function updateSpeed() {
+    const v = parseFloat(speedRange.value);
+    speedLabel.textContent = v.toFixed(1) + 'x';
+    const base = 1.0 / v;
+    document.documentElement.style.setProperty('--speed', base.toFixed(2) + 's');
+    animM.setAttribute('dur', base.toFixed(2) + 's');
+    animL.setAttribute('dur', base.toFixed(2) + 's');
+    animT.setAttribute('dur', base.toFixed(2) + 's');
+  }
+
+  function resetDots() {
+    dotM.setAttribute('opacity', '0');
+    dotL.setAttribute('opacity', '0');
+    dotT.setAttribute('opacity', '0');
+    animM.removeAttribute('path');
+    animL.removeAttribute('path');
+    animT.removeAttribute('path');
+  }
+
+  function playArrowForStep(step) {
+    resetDots();
+    const type = step.type;
+    const sid = step.id;
+    const related = arrows.filter(a => {
+      const s = (a.getAttribute('data-steps') || '').split(',');
+      return s.includes(String(sid));
+    });
+    related.forEach(a => {
+      a.classList.remove('active');
+      void a.offsetWidth;
+      a.classList.add('active');
+    });
+
+    if (type === 'metrics') {
+      const path = related[related.length - 1];
+      if (path) {
+        const id = path.getAttribute('id');
+        animM.setAttribute('path', 'M 0 0 '); // dummy to reset
+        void animM.beginElement;
+        animM.setAttribute('xlink:href', '#' + id);
+        animM.setAttribute('href', '#' + id);
+        dotM.setAttribute('opacity', '1');
+        animM.beginElement();
+      }
+    } else if (type === 'logs') {
+      const path = related[related.length - 1];
+      if (path) {
+        const id = path.getAttribute('id');
+        animL.setAttribute('path', 'M 0 0 ');
+        void animL.beginElement;
+        animL.setAttribute('xlink:href', '#' + id);
+        animL.setAttribute('href', '#' + id);
+        dotL.setAttribute('opacity', '1');
+        animL.beginElement();
+      }
+    } else if (type === 'traces') {
+      const path = related[related.length - 1];
+      if (path) {
+        const id = path.getAttribute('id');
+        animT.setAttribute('path', 'M 0 0 ');
+        void animT.beginElement;
+        animT.setAttribute('xlink:href', '#' + id);
+        animT.setAttribute('href', '#' + id);
+        dotT.setAttribute('opacity', '1');
+        animT.beginElement();
+      }
+    }
+  }
+
+  function renderStep() {
+    const step = steps[current - 1];
+    stepIndex.textContent = current + ' / ' + steps.length;
+    stepText.textContent = step.text;
+
+    const parts = steps.map(s => {
+      if (s.id === step.id) {
+        return '<span class="current">[' + s.id + '] ' + s.type.toUpperCase() + '</span>';
+      }
+      return '[' + s.id + '] ' + s.type.toUpperCase();
+    });
+    stepList.innerHTML = parts.join(' · ');
+
+    btnPrev.disabled = current === 1;
+    btnNext.disabled = current === steps.length;
+
+    arrows.forEach(a => a.classList.remove('active'));
+    playArrowForStep(step);
+  }
+
+  btnPrev.addEventListener('click', () => {
+    if (current > 1) {
+      current--;
+      renderStep();
+    }
+  });
+  btnNext.addEventListener('click', () => {
+    if (current < steps.length) {
+      current++;
+      renderStep();
+    }
+  });
+  btnReset.addEventListener('click', () => {
+    current = 1;
+    renderStep();
+  });
+  speedRange.addEventListener('input', updateSpeed);
+
+  updateSpeed();
+  renderStep();
+})();
+</script>
+</body>
+</html>
