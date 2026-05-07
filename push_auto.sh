@@ -1,0 +1,6 @@
+#!/bin/bash
+cd /www/devops-ucloud/ucloud-nav
+git add .
+git commit -m "定时自动更新 $(date '+%Y-%m-%d %H:%M:%S')"
+git push gitee main
+git push github main
