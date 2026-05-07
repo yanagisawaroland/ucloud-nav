@@ -1,0 +1,28 @@
+[main f3dcf33] 定时自动更新 2026-05-08 01:05:01
+ 21 files changed, 292 insertions(+), 3173 deletions(-)
+ create mode 100644 .0.0.0.command.html.swp
+ create mode 100644 0.0.0.note.html
+ create mode 100644 10.20.50.0.html
+ create mode 100644 10.20.50.0.html.bak
+ delete mode 100755 202605050106_mysql-cluster-ultimate.html
+ delete mode 100755 202605050112_mysql-cluster-ultimate-fixed.html
+ delete mode 100755 202605050115_pxc_cluster_dynamic.html
+ delete mode 100755 202605050118_mysql-cluster-visualization.html
+ delete mode 100755 202605050200-python-learning-roadmap.html
+ delete mode 100644 20260505043404-istio-observability.html
+ delete mode 100644 20260505050535-velero-backup-restore.html
+ create mode 100755 delete-page-html.sh
+ delete mode 100755 index.html.bak
+ delete mode 100755 index.html.old
+ delete mode 100755 istio-observability-ops.sh
+ create mode 100644 push-gitlab-gitee.txt
+ create mode 100755 push_auto.sh
+ create mode 100644 push_log.txt
+ delete mode 100755 rename-html.sh
+ delete mode 100755 run_all.sh
+remote: Powered by [01;33mGITEE.COM [0m[1.1.23]        
+remote: Set trace flag 104dbfae        
+To https://gitee.com/ucloud68/ucloud-nav.git
+   07b1067..f3dcf33  main -> main
+To https://github.com/yanagisawaroland/ucloud-nav.git
+   07b1067..f3dcf33  main -> main
