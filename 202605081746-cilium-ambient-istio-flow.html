@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cilium / Ambient Mesh / Istio — 逻辑关系与流程动态图</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:       #f4f6f9;
+    --panel:    #ffffff;
+    --border:   #d0d7e3;
+    --text:     #1a2236;
+    --muted:    #6b7a99;
+    --cilium:   #e85d04;
+    --ambient:  #0077b6;
+    --istio:    #7b2d8b;
+    --arrow:    #94a3b8;
+    --highlight:#fbbf24;
+    --active-glow: 0 0 18px 4px rgba(251,191,36,0.45);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 24px 60px;
+  }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-align: center;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: .85rem;
+    margin-bottom: 28px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+  .btn {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border);
+    background: var(--panel);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .8rem;
+    cursor: pointer;
+    color: var(--text);
+    transition: background .18s, border-color .18s, color .18s, box-shadow .18s;
+  }
+  .btn:hover { border-color: var(--highlight); box-shadow: 0 0 0 2px rgba(251,191,36,.25); }
+  .btn.active { background: var(--highlight); border-color: #d97706; color: #1a2236; font-weight: 600; }
+  .btn-cilium.active  { background: var(--cilium);  border-color: #b94700; color: #fff; }
+  .btn-ambient.active { background: var(--ambient); border-color: #005f8e; color: #fff; }
+  .btn-istio.active   { background: var(--istio);   border-color: #5a1e6b; color: #fff; }
+
+  /* ── Main canvas ── */
+  .canvas-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px 24px;
+    max-width: 1000px;
+    margin: 0 auto 36px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: .78rem;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── SVG diagram ── */
+  #diagram-svg {
+    display: block;
+    width: 100%;
+    max-width: 940px;
+    margin: 0 auto;
+  }
+
+  /* ── Node styles ── */
+  .node-box {
+    rx: 8px; ry: 8px;
+    stroke-width: 1.8;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,.08));
+    transition: filter .3s;
+  }
+  .node-box:hover { cursor: pointer; }
+
+  .lbl { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; }
+  .sub { font-family: 'IBM Plex Sans', sans-serif; font-size: 10.5px; fill: #6b7a99; }
+
+  /* glow animation */
+  @keyframes pulse-glow {
+    0%,100% { opacity: 1; }
+    50%      { opacity: .55; }
+  }
+  .flow-arrow {
+    stroke-dasharray: 6 4;
+    stroke-dashoffset: 0;
+    animation: dash-flow 1.6s linear infinite;
+  }
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+  .flow-arrow-rev {
+    stroke-dasharray: 6 4;
+    animation: dash-flow-rev 1.6s linear infinite;
+  }
+  @keyframes dash-flow-rev {
+    to { stroke-dashoffset: 20; }
+  }
+
+  /* ── Info panel ── */
+  .info-panel {
+    max-width: 1000px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .info-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    transition: box-shadow .2s, border-color .2s;
+  }
+  .info-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.08); }
+  .info-card h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .88rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .info-card ul {
+    padding-left: 16px;
+    font-size: .8rem;
+    color: var(--muted);
+    line-height: 1.75;
+  }
+  .info-card ul li { margin-bottom: 2px; }
+
+  .section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    text-align: center;
+    margin-bottom: 16px;
+    max-width: 1000px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* highlight state */
+  .dim { opacity: 0.18; transition: opacity .35s; }
+  .bright { opacity: 1; transition: opacity .35s; }
+</style>
+</head>
+<body>
+
+<h1>Cilium · Ambient Mesh · Istio</h1>
+<p class="subtitle">逻辑关系 &amp; 数据流动态图 — 点击节点或按钮交互</p>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn" id="btn-all"     onclick="showAll()">全部显示</button>
+  <button class="btn btn-cilium"  id="btn-cilium"  onclick="highlight('cilium')">Cilium 层</button>
+  <button class="btn btn-ambient" id="btn-ambient" onclick="highlight('ambient')">Ambient Mesh 层</button>
+  <button class="btn btn-istio"   id="btn-istio"   onclick="highlight('istio')">Istio 控制层</button>
+  <button class="btn" id="btn-flow"    onclick="toggleFlow()">▶ 流量动画</button>
+  <button class="btn" id="btn-reset"   onclick="resetAll()">重置</button>
+</div>
+
+<!-- Diagram -->
+<div class="canvas-wrap">
+  <div class="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:var(--cilium)"></span>Cilium (eBPF 数据面)</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--ambient)"></span>Ambient Mesh (无 Sidecar)</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--istio)"></span>Istio (控制平面)</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#64748b"></span>K8s 基础设施</span>
+  </div>
+
+<svg id="diagram-svg" viewBox="0 0 940 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arr-c" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="var(--cilium)"/>
+    </marker>
+    <marker id="arr-a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="var(--ambient)"/>
+    </marker>
+    <marker id="arr-i" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="var(--istio)"/>
+    </marker>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 0: External Traffic -->
+  <!-- ══════════════════════════════════════════ -->
+  <g id="g-ext" class="bright">
+    <rect x="380" y="16" width="180" height="44" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.6"/>
+    <text x="470" y="35" text-anchor="middle" class="lbl" fill="#475569">External Traffic</text>
+    <text x="470" y="51" text-anchor="middle" class="sub">Client / Internet</text>
+  </g>
+
+  <!-- arrow ext -> ingress -->
+  <line x1="470" y1="60" x2="470" y2="100" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arr)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 1: Istio Ingress Gateway -->
+  <!-- ══════════════════════════════════════════ -->
+  <g id="g-ingress" class="bright" onclick="highlight('istio')">
+    <rect x="320" y="100" width="300" height="50" rx="8" fill="#f3e8ff" stroke="var(--istio)" stroke-width="1.8" class="node-box"/>
+    <text x="470" y="122" text-anchor="middle" class="lbl" fill="var(--istio)">Istio IngressGateway</text>
+    <text x="470" y="138" text-anchor="middle" class="sub">L7 路由 · TLS 终止 · VirtualService</text>
+  </g>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 2: Istiod control plane -->
+  <!-- ══════════════════════════════════════════ -->
+  <g id="g-istiod" class="bright" onclick="highlight('istio')">
+    <rect x="680" y="96" width="220" height="58" rx="8" fill="#f3e8ff" stroke="var(--istio)" stroke-width="1.8" class="node-box"/>
+    <text x="790" y="120" text-anchor="middle" class="lbl" fill="var(--istio)">istiod</text>
+    <text x="790" y="136" text-anchor="middle" class="sub">xDS · Cert · Pilot · Mixer</text>
+    <text x="790" y="148" text-anchor="middle" class="sub">控制平面</text>
+  </g>
+
+  <!-- istiod <-> ingress -->
+  <line x1="620" y1="124" x2="680" y2="124" stroke="var(--istio)" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arr-i)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 2: Cilium / eBPF layer (kernel) -->
+  <!-- ══════════════════════════════════════════ -->
+  <!-- bracket bg -->
+  <rect x="20" y="170" width="900" height="68" rx="10" fill="#fff3ec" stroke="var(--cilium)" stroke-width="1.4" stroke-dasharray="5 3"/>
+  <text x="34" y="188" class="sub" fill="var(--cilium)" font-weight="600" font-size="11">Cilium / eBPF 数据面 (Linux Kernel)</text>
+
+  <g id="g-cilium-cni" class="bright" onclick="highlight('cilium')">
+    <rect x="36" y="194" width="150" height="34" rx="6" fill="#fff" stroke="var(--cilium)" stroke-width="1.7" class="node-box"/>
+    <text x="111" y="207" text-anchor="middle" class="lbl" fill="var(--cilium)" font-size="11">CNI Plugin</text>
+    <text x="111" y="221" text-anchor="middle" class="sub">Pod 网络 / IPAM</text>
+  </g>
+
+  <g id="g-cilium-ebpf" class="bright" onclick="highlight('cilium')">
+    <rect x="210" y="194" width="160" height="34" rx="6" fill="#fff" stroke="var(--cilium)" stroke-width="1.7" class="node-box"/>
+    <text x="290" y="207" text-anchor="middle" class="lbl" fill="var(--cilium)" font-size="11">eBPF Datapath</text>
+    <text x="290" y="221" text-anchor="middle" class="sub">XDP · TC Hook · kprobe</text>
+  </g>
+
+  <g id="g-cilium-np" class="bright" onclick="highlight('cilium')">
+    <rect x="394" y="194" width="160" height="34" rx="6" fill="#fff" stroke="var(--cilium)" stroke-width="1.7" class="node-box"/>
+    <text x="474" y="207" text-anchor="middle" class="lbl" fill="var(--cilium)" font-size="11">NetworkPolicy</text>
+    <text x="474" y="221" text-anchor="middle" class="sub">L3/L4/L7 策略</text>
+  </g>
+
+  <g id="g-cilium-lb" class="bright" onclick="highlight('cilium')">
+    <rect x="578" y="194" width="150" height="34" rx="6" fill="#fff" stroke="var(--cilium)" stroke-width="1.7" class="node-box"/>
+    <text x="653" y="207" text-anchor="middle" class="lbl" fill="var(--cilium)" font-size="11">kube-proxy 替代</text>
+    <text x="653" y="221" text-anchor="middle" class="sub">eBPF LB / ClusterIP</text>
+  </g>
+
+  <g id="g-cilium-hubble" class="bright" onclick="highlight('cilium')">
+    <rect x="752" y="194" width="148" height="34" rx="6" fill="#fff" stroke="var(--cilium)" stroke-width="1.7" class="node-box"/>
+    <text x="826" y="207" text-anchor="middle" class="lbl" fill="var(--cilium)" font-size="11">Hubble</text>
+    <text x="826" y="221" text-anchor="middle" class="sub">可观测 / 流量可视化</text>
+  </g>
+
+  <!-- ── Cilium internal arrows ── -->
+  <line x1="186" y1="211" x2="210" y2="211" stroke="var(--cilium)" stroke-width="1.2" marker-end="url(#arr-c)"/>
+  <line x1="370" y1="211" x2="394" y2="211" stroke="var(--cilium)" stroke-width="1.2" marker-end="url(#arr-c)"/>
+  <line x1="554" y1="211" x2="578" y2="211" stroke="var(--cilium)" stroke-width="1.2" marker-end="url(#arr-c)"/>
+  <line x1="728" y1="211" x2="752" y2="211" stroke="var(--cilium)" stroke-width="1.2" marker-end="url(#arr-c)"/>
+
+  <!-- Ingress -> Cilium -->
+  <line x1="470" y1="150" x2="470" y2="194" stroke="#94a3b8" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 3: Ambient Mesh layer -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="20" y="258" width="900" height="80" rx="10" fill="#e0f2fe" stroke="var(--ambient)" stroke-width="1.4" stroke-dasharray="5 3"/>
+  <text x="34" y="275" class="sub" fill="var(--ambient)" font-weight="600" font-size="11">Ambient Mesh 层 (无 Sidecar)</text>
+
+  <g id="g-ztunnel" class="bright" onclick="highlight('ambient')">
+    <rect x="36" y="280" width="190" height="46" rx="7" fill="#fff" stroke="var(--ambient)" stroke-width="1.8" class="node-box"/>
+    <text x="131" y="298" text-anchor="middle" class="lbl" fill="var(--ambient)" font-size="12">ztunnel</text>
+    <text x="131" y="312" text-anchor="middle" class="sub">每节点 DaemonSet</text>
+    <text x="131" y="324" text-anchor="middle" class="sub">mTLS · L4 策略</text>
+  </g>
+
+  <g id="g-waypoint" class="bright" onclick="highlight('ambient')">
+    <rect x="256" y="280" width="200" height="46" rx="7" fill="#fff" stroke="var(--ambient)" stroke-width="1.8" class="node-box"/>
+    <text x="356" y="298" text-anchor="middle" class="lbl" fill="var(--ambient)" font-size="12">Waypoint Proxy</text>
+    <text x="356" y="312" text-anchor="middle" class="sub">按 Namespace/Service 部署</text>
+    <text x="356" y="324" text-anchor="middle" class="sub">L7 策略 · HTTP / gRPC</text>
+  </g>
+
+  <g id="g-ambient-hbone" class="bright" onclick="highlight('ambient')">
+    <rect x="484" y="280" width="180" height="46" rx="7" fill="#fff" stroke="var(--ambient)" stroke-width="1.8" class="node-box"/>
+    <text x="574" y="298" text-anchor="middle" class="lbl" fill="var(--ambient)" font-size="12">HBONE 隧道</text>
+    <text x="574" y="312" text-anchor="middle" class="sub">HTTP/2 CONNECT</text>
+    <text x="574" y="324" text-anchor="middle" class="sub">跨节点安全传输</text>
+  </g>
+
+  <g id="g-ambient-ctrl" class="bright" onclick="highlight('ambient')">
+    <rect x="692" y="280" width="208" height="46" rx="7" fill="#fff" stroke="var(--ambient)" stroke-width="1.8" class="node-box"/>
+    <text x="796" y="298" text-anchor="middle" class="lbl" fill="var(--ambient)" font-size="12">CNI / iptables redirect</text>
+    <text x="796" y="312" text-anchor="middle" class="sub">流量劫持到 ztunnel</text>
+    <text x="796" y="324" text-anchor="middle" class="sub">透明接管</text>
+  </g>
+
+  <!-- ztunnel -> waypoint -> hbone -->
+  <line x1="226" y1="303" x2="256" y2="303" stroke="var(--ambient)" stroke-width="1.3" marker-end="url(#arr-a)"/>
+  <line x1="456" y1="303" x2="484" y2="303" stroke="var(--ambient)" stroke-width="1.3" marker-end="url(#arr-a)"/>
+  <line x1="664" y1="303" x2="692" y2="303" stroke="var(--ambient)" stroke-width="1.3" marker-end="url(#arr-a)"/>
+
+  <!-- Cilium -> Ambient (vertical) -->
+  <line x1="131" y1="228" x2="131" y2="280" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+  <line x1="474" y1="228" x2="474" y2="280" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 4: Pod layer -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="20" y="356" width="900" height="76" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="34" y="372" class="sub" fill="#64748b" font-weight="600" font-size="11">Pod / Workload 层</text>
+
+  <!-- Pod A -->
+  <g id="g-poda" class="bright">
+    <rect x="60" y="378" width="120" height="44" rx="7" fill="#fff" stroke="#64748b" stroke-width="1.5" class="node-box"/>
+    <text x="120" y="396" text-anchor="middle" class="lbl" fill="#334155" font-size="11">Pod A</text>
+    <text x="120" y="411" text-anchor="middle" class="sub">App Container</text>
+  </g>
+  <!-- Pod B -->
+  <g id="g-podb" class="bright">
+    <rect x="220" y="378" width="120" height="44" rx="7" fill="#fff" stroke="#64748b" stroke-width="1.5" class="node-box"/>
+    <text x="280" y="396" text-anchor="middle" class="lbl" fill="#334155" font-size="11">Pod B</text>
+    <text x="280" y="411" text-anchor="middle" class="sub">App Container</text>
+  </g>
+  <!-- Sidecar Pod (old Istio) -->
+  <g id="g-sidecar" class="bright" onclick="highlight('istio')">
+    <rect x="380" y="378" width="180" height="44" rx="7" fill="#fdf4ff" stroke="var(--istio)" stroke-width="1.5" class="node-box"/>
+    <text x="470" y="396" text-anchor="middle" class="lbl" fill="var(--istio)" font-size="11">Pod (Sidecar 模式)</text>
+    <text x="470" y="411" text-anchor="middle" class="sub">Envoy Proxy + App — 旧 Istio</text>
+  </g>
+  <!-- Service -->
+  <g id="g-svc" class="bright">
+    <rect x="600" y="378" width="140" height="44" rx="7" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5" class="node-box"/>
+    <text x="670" y="396" text-anchor="middle" class="lbl" fill="#15803d" font-size="11">K8s Service</text>
+    <text x="670" y="411" text-anchor="middle" class="sub">ClusterIP / NodePort</text>
+  </g>
+  <!-- etcd -->
+  <g id="g-etcd" class="bright">
+    <rect x="780" y="378" width="120" height="44" rx="7" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.5" class="node-box"/>
+    <text x="840" y="396" text-anchor="middle" class="lbl" fill="#0369a1" font-size="11">etcd / API</text>
+    <text x="840" y="411" text-anchor="middle" class="sub">K8s 状态存储</text>
+  </g>
+
+  <!-- Ambient -> Pod -->
+  <line x1="131" y1="326" x2="120" y2="378" stroke="var(--ambient)" stroke-width="1.3" marker-end="url(#arr-a)"/>
+  <line x1="280" y1="326" x2="280" y2="378" stroke="var(--ambient)" stroke-width="1.3" marker-end="url(#arr-a)"/>
+  <line x1="574" y1="326" x2="470" y2="378" stroke="var(--istio)" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arr-i)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- ROW 5: Shared control flow labels -->
+  <!-- ══════════════════════════════════════════ -->
+  <!-- istiod -> waypoint config -->
+  <line x1="790" y1="154" x2="796" y2="280" stroke="var(--istio)" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arr-i)"/>
+  <!-- istiod -> sidecar -->
+  <path d="M 680 150 Q 580 200 470 378" stroke="var(--istio)" stroke-width="1.1" stroke-dasharray="3 3" fill="none" marker-end="url(#arr-i)"/>
+
+  <!-- ── animated flow arrows (hidden by default) ── -->
+  <g id="g-flow-anim" style="display:none">
+    <line class="flow-arrow" x1="470" y1="60" x2="470" y2="100" stroke="var(--highlight)" stroke-width="2.5" marker-end="url(#arr)"/>
+    <line class="flow-arrow" x1="470" y1="150" x2="470" y2="194" stroke="var(--highlight)" stroke-width="2.5" marker-end="url(#arr)"/>
+    <line class="flow-arrow" x1="474" y1="228" x2="474" y2="280" stroke="var(--highlight)" stroke-width="2.5" marker-end="url(#arr)"/>
+    <line class="flow-arrow" x1="574" y1="326" x2="470" y2="378" stroke="var(--highlight)" stroke-width="2.5" marker-end="url(#arr)"/>
+  </g>
+
+</svg>
+</div>
+
+<!-- Info cards -->
+<p class="section-title">组件说明 &amp; 对比</p>
+<div class="info-panel">
+
+  <div class="info-card" id="card-cilium">
+    <h3><span class="dot" style="background:var(--cilium)"></span>Cilium (eBPF 数据面)</h3>
+    <ul>
+      <li>基于 Linux eBPF，运行于内核态，零拷贝高性能</li>
+      <li>替代 kube-proxy，eBPF 实现 ClusterIP/LB</li>
+      <li>L3/L4/L7 NetworkPolicy，身份感知策略</li>
+      <li>Hubble 提供实时流量可观测性</li>
+      <li>可与 Istio/Ambient 协同：Cilium 处理底层转发，Istio 提供 L7 治理</li>
+      <li>典型场景：高性能微服务网络 + 安全策略</li>
+    </ul>
+  </div>
+
+  <div class="info-card" id="card-ambient">
+    <h3><span class="dot" style="background:var(--ambient)"></span>Ambient Mesh (无 Sidecar)</h3>
+    <ul>
+      <li>Istio v1.18+ 新模式，无需在 Pod 注入 Sidecar</li>
+      <li>ztunnel：每节点 DaemonSet，处理 mTLS 和 L4 策略</li>
+      <li>Waypoint Proxy：按需部署，提供 L7 HTTP/gRPC 策略</li>
+      <li>HBONE 隧道：HTTP/2 CONNECT 跨节点加密传输</li>
+      <li>资源消耗大幅降低，启动速度更快</li>
+      <li>与 Cilium CNI 兼容，推荐搭配使用</li>
+    </ul>
+  </div>
+
+  <div class="info-card" id="card-istio">
+    <h3><span class="dot" style="background:var(--istio)"></span>Istio 控制平面</h3>
+    <ul>
+      <li>istiod：统一控制平面，分发 xDS 配置</li>
+      <li>VirtualService / DestinationRule：流量路由与熔断</li>
+      <li>两种数据面：Sidecar 模式（旧）/ Ambient 模式（新）</li>
+      <li>证书管理：自动 mTLS，SPIFFE/SPIRE 身份</li>
+      <li>可观测：Kiali / Jaeger / Prometheus 集成</li>
+      <li>IngressGateway：统一南北向流量入口</li>
+    </ul>
+  </div>
+
+  <div class="info-card">
+    <h3><span class="dot" style="background:#64748b"></span>三者协同关系</h3>
+    <ul>
+      <li><b>底层</b>：Cilium CNI 负责 Pod 网络和 eBPF 高速转发</li>
+      <li><b>中层</b>：Ambient Mesh (ztunnel) 负责透明 mTLS 和 L4 策略</li>
+      <li><b>上层</b>：Istio 控制平面下发 L7 路由、熔断、限流策略</li>
+      <li>Cilium 可替代 kube-proxy，ztunnel 可替代 Sidecar Envoy</li>
+      <li>三者叠加使用时：Cilium 处理内核态转发 → ztunnel 加密 → Waypoint 做 L7</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+let flowOn = false;
+let currentHL = null;
+
+const groups = {
+  cilium:  ['g-cilium-cni','g-cilium-ebpf','g-cilium-np','g-cilium-lb','g-cilium-hubble'],
+  ambient: ['g-ztunnel','g-waypoint','g-ambient-hbone','g-ambient-ctrl'],
+  istio:   ['g-istiod','g-ingress','g-sidecar'],
+  infra:   ['g-ext','g-poda','g-podb','g-svc','g-etcd']
+};
+const allGroups = Object.values(groups).flat();
+
+function showAll() {
+  allGroups.forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('dim'); el.classList.add('bright'); }});
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-all').classList.add('active');
+  currentHL = null;
+}
+
+function highlight(type) {
+  if(currentHL === type){ showAll(); return; }
+  currentHL = type;
+  const hl = groups[type] || [];
+  allGroups.forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(hl.includes(id)) { el.classList.remove('dim'); el.classList.add('bright'); }
+    else { el.classList.remove('bright'); el.classList.add('dim'); }
+  });
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + type);
+  if(btn) btn.classList.add('active');
+}
+
+function toggleFlow() {
+  flowOn = !flowOn;
+  const anim = document.getElementById('g-flow-anim');
+  anim.style.display = flowOn ? 'block' : 'none';
+  const btn = document.getElementById('btn-flow');
+  btn.textContent = flowOn ? '⏸ 流量动画' : '▶ 流量动画';
+  btn.classList.toggle('active', flowOn);
+}
+
+function resetAll() {
+  showAll();
+  if(flowOn) toggleFlow();
+}
+
+document.getElementById('btn-all').classList.add('active');
+</script>
+</body>
+</html>
