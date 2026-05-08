@@ -69,3 +69,42 @@ To https://gitee.com/ucloud68/ucloud-nav.git
    e5659fc..919bf2a  main -> main
 To https://github.com/yanagisawaroland/ucloud-nav.git
    e5659fc..919bf2a  main -> main
+[main 13762e8] 定时自动更新 2026-05-09 01:05:01
+ 9 files changed, 141 insertions(+), 113 deletions(-)
+ create mode 100644 0.0.0.argocd.html
+ delete mode 100644 0.0.0.command.html
+ create mode 100644 0.0.0.harbor-gitlab.html
+ create mode 100644 0.0.0.istio.html
+ create mode 100644 0.0.0.linux.html
+ delete mode 100644 0.0.0.note.html
+ rename 10.20.50.0.html => 10.20.50.0-nav.html (100%)
+remote: Powered by [01;33mGITEE.COM [0m[1.1.23]        
+remote: Set trace flag d249ffbd        
+To https://gitee.com/ucloud68/ucloud-nav.git
+   919bf2a..13762e8  main -> main
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— GitLab Access Token ———————————————————————————————        
+remote:        locations:        
+remote:          - commit: 13762e8b0202ab15f9ef9292f9a687340d06b1a3        
+remote:            path: 0.0.0.harbor-gitlab.html:23        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/yanagisawaroland/ucloud-nav/security/secret-scanning/unblock-secret/3DRzvzqcqtG6cf6MgxR0JmXTrHp        
+remote:             
+remote: 
+remote: 
+To https://github.com/yanagisawaroland/ucloud-nav.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
