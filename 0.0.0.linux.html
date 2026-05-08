@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Linux & Mac 命令</title>
+</head>
+<body>
+<pre style="white-space: pre-wrap; font-family: monospace;">
+# 配置默认编辑器为 vim
+export EDITOR=vim
+crontab -e
+echo 'export EDITOR=vim' >> /etc/profile
+source /etc/profile
+
+# Linux 配置 DNS
+linux:
+cat > /etc/resolv.conf << 'EOF'
+nameserver 10.20.50.75
+nameserver 8.8.8.8
+EOF
+
+# Mac 配置 DNS
+Mac:
+sudo mkdir -p /etc/resolver
+sudo tee /etc/resolver/devops51.lan << 'EOF'
+nameserver 10.20.50.75
+EOF
+
+# 刷新 Mac DNS 缓存
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+</pre>
+</body>
+</html>

@@ -1,5 +1,0 @@
-curl -sku admin:Harbor12345 "https://harbor.devops.local:7581/api/v2.0/repositories?page_size=100" | jq -r '.[].name'
-
-curl -sku admin:Harbor12345 "https://harbor.devops.local:7581/api/v2.0/repositories?page_size=100" | jq -r '.[].name' | grep -E 'pilot|proxyv2|ztunnel|install-cni'
-
-

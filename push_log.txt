@@ -60,3 +60,12 @@ To https://gitee.com/ucloud68/ucloud-nav.git
    94ca1da..e5659fc  main -> main
 To https://github.com/yanagisawaroland/ucloud-nav.git
    94ca1da..e5659fc  main -> main
+[main 919bf2a] 定时自动更新 2026-05-08 19:30:01
+ 4 files changed, 637 insertions(+), 65 deletions(-)
+ create mode 100644 202605081746-cilium-ambient-istio-flow.html
+remote: Powered by [01;33mGITEE.COM [0m[1.1.23]        
+remote: Set trace flag 3c44c899        
+To https://gitee.com/ucloud68/ucloud-nav.git
+   e5659fc..919bf2a  main -> main
+To https://github.com/yanagisawaroland/ucloud-nav.git
+   e5659fc..919bf2a  main -> main
