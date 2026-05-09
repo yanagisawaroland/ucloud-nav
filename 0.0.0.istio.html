@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Istio 常用命令</title>
+    <style>
+        pre { 
+            white-space: pre-wrap; 
+            font-family: monospace; 
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .comment { color: #666; /* 注释灰色，更易区分 */ }
+    </style>
+</head>
+<body>
+<pre>
+# Istio 核心常用命令
+<span class="comment"># 1. 查看 Istio 版本</span>
+istioctl version
+
+<span class="comment"># 2. 查看代理状态（Sidecar 同步情况）</span>
+istioctl proxy-status
+
+<span class="comment"># 3. 分析集群 Istio 配置/状态问题</span>
+istioctl analyze
+
+<span class="comment"># 补充常用命令</span>
+istioctl install --set profile=default  # 安装 Istio（默认配置）
+istioctl uninstall --purge -y           # 彻底卸载 Istio（清理所有资源）
+istioctl proxy-config routes <pod-name> -o yaml  # 查看 Pod 的 Sidecar 路由规则
+istioctl describe pod <pod-name>        # 查看 Pod 的 Istio 配置详情
+istioctl logs <pod-name> -c istio-proxy # 查看 Sidecar 日志
+</pre>
+</body>
+</html>
