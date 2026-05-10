@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Cilium + Istio + Ambient 踩坑总结</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f7f9fc;
+    margin: 0;
+    padding: 40px;
+}
+.container {
+    max-width: 1000px;
+    margin: auto;
+    text-align: left;
+    line-height: 1.8;
+}
+h1 {
+    text-align: center;
+    color: #333;
+}
+.section {
+    background: white;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+.btn {
+    padding: 10px 15px;
+    margin: 5px;
+    background: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+}
+.btn:hover { background: #0056b3; }
+pre { background:#111; color:#0f0; padding:10px; overflow:auto; }
+
+.fade {
+    animation: fadeIn 1s ease-in-out;
+}
+@keyframes fadeIn {
+    from {opacity:0;}
+    to {opacity:1;}
+}
+</style>
+</head>
+<body>
+
+<h1>Cilium + Istio + Ambient Mesh 踩坑总结</h1>
+
+<div class="container">
+
+<div class="section fade">
+<h2>🔥 核心问题总结</h2>
+<ul>
+<li>Istiod 多 ReplicaSet 混乱（版本污染）</li>
+<li>Helm upgrade + rollout 混用导致控制面不收敛</li>
+<li>Webhook 残留导致 admission 异常</li>
+<li>RBAC / ServiceAccount / token 状态不一致</li>
+<li>Readiness probe 一直 503</li>
+</ul>
+</div>
+
+<div class="section fade">
+<h2>⚠️ Cilium 常见坑</h2>
+<ul>
+<li>Envoy sidecar 与 eBPF 模式冲突</li>
+<li>kube-proxy replacement 未统一配置</li>
+<li>网络 sandbox 创建失败（CNI未稳定）</li>
+</ul>
+</div>
+
+<div class="section fade">
+<h2>⚠️ Istio 常见坑</h2>
+<ul>
+<li>多版本 istiod 共存（最致命）</li>
+<li>ConfigMap 访问 Unauthorized</li>
+<li>Webhook 未同步升级</li>
+<li>metrics-server 未就绪导致 HPA 误判</li>
+</ul>
+</div>
+
+<div class="section fade">
+<h2>⚡ Ambient Mesh 特点</h2>
+<ul>
+<li>无需 sidecar（ztunnel + waypoint）</li>
+<li>更依赖 CNI（如 Cilium）</li>
+<li>对 control plane 一致性要求更高</li>
+</ul>
+</div>
+
+<div class="section fade">
+<h2>🎮 控制按钮</h2>
+<button class="btn" onclick="document.body.style.background='#f7f9fc'">浅色模式</button>
+<button class="btn" onclick="document.body.style.background='#1e1e1e';document.body.style.color='#fff'">深色模式</button>
+<button class="btn" onclick="location.reload()">重播动画</button>
+</div>
+
+</div>
+
+</body>
+</html>
