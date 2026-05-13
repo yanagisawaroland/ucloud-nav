@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Istio Ambient v1.29.0 安装配置</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;padding:20px;background:#f5f5f5;color:#222;line-height:1.7}
+h1{border-bottom:3px solid #9b59b6;padding-bottom:8px}
+h2{background:#9b59b6;color:#fff;padding:6px 14px;border-radius:4px;font-size:18px;margin-top:28px}
+h3{color:#7d3c98;margin-top:18px}
+pre{background:#f0f0f0;color:#1a1a1a;padding:16px;border-radius:6px;overflow-x:auto;font-size:14px;border:1px solid #d0d0d0;font-family:"SF Mono",Consolas,monospace}
+code{font-family:"SF Mono",Consolas,monospace;background:#e8e8e8;padding:2px 6px;border-radius:3px;font-size:14px}
+.note{background:#fff8e1;border-left:4px solid #ffc107;padding:10px 15px;margin:12px 0;border-radius:4px}
+.warn{background:#fce4e4;border-left:4px solid #e74c3c;padding:10px 15px;margin:12px 0;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>Istio Ambient v1.29.0 安装配置</h1>
+<div class="meta"><strong>模式:</strong> Ambient（无 sidecar）/ 镜像: Harbor devops81</div>
+
+<h2>0. 前提条件（两个节点务必先执行）</h2>
+<pre>mkdir -p /opt/cni/bin && ln -sf /var/lib/rancher/k3s/data/current/bin/istio-cni /opt/cni/bin/istio-cni</pre>
+
+<h2>1. 下载 istioctl</h2>
+<pre>curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.0 sh -
+echo 'export PATH=$PATH:/root/istio-1.29.0/bin' >> /etc/profile
+source /etc/profile</pre>
+
+<h2>2. 创建命名空间</h2>
+<pre>kubectl create namespace istio-system</pre>
+
+<h2>3. istio-ambient.yaml</h2>
+<pre>apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+spec:
+  hub: harbor.devops.local:7581/devops81
+  tag: 1.29.0
+  profile: ambient
+  components:
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: true
+    pilot:
+      k8s:
+        resources:
+          requests:
+            memory: 200Mi
+            cpu: 100m
+  values:
+    global:
+      proxy:
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 10m
+    cni:
+      cniBinDir: /var/lib/rancher/k3s/data/current/bin
+      cniConfDir: /etc/cni/net.d
+      excludeNamespaces:
+        - kube-system
+        - istio-system</pre>
+
+<div class="warn"><strong>⚠️ 关键：</strong>excludeNamespaces 必须加 [kube-system, istio-system]，否则 istio 自身组件创建 sandbox 会卡死</div>
+
+<h2>4. 安装</h2>
+<pre>istioctl install -f ~/istio-ambient.yaml -y</pre>
+
+<h2>验证</h2>
+<pre>kubectl get pods -n istio-system
+# 预期 6/6 Running: istiod, istio-cni-node(x2), ztunnel(x2), istio-ingressgateway</pre>
+</body>
+</html>

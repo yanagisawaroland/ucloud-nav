@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>K3s + Cilium + Istio Ambient 安装成功总结</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;padding:20px;background:#f5f5f5;color:#222;line-height:1.7}
+h1{border-bottom:3px solid #27ae60;padding-bottom:8px}
+h2{background:#27ae60;color:#fff;padding:6px 14px;border-radius:4px;font-size:18px;margin-top:28px}
+h3{color:#1e8449;margin-top:18px}
+table{width:100%;border-collapse:collapse;margin:12px 0;background:#fff}
+th,td{border:1px solid #ccc;padding:8px 12px;text-align:left}
+th{background:#e8f0fe;font-weight:600}
+code{font-family:"SF Mono",Consolas,monospace;background:#e8e8e8;padding:2px 6px;border-radius:3px;font-size:14px}
+pre{background:#f0f0f0;color:#1a1a1a;padding:16px;border-radius:6px;overflow-x:auto;font-size:14px;border:1px solid #d0d0d0;font-family:"SF Mono",Consolas,monospace}
+.meta{color:#555;font-size:14px;margin-bottom:20px}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600}
+.tag-ok{background:#d4edda;color:#155724}
+.tag-fail{background:#f8d7da;color:#721c24}
+</style>
+</head>
+<body>
+
+<h1>安装成功总结</h1>
+<div class="meta">devops81 — K3s v1.31.5+k3s1 / Cilium v1.19.1 / Istio Ambient v1.29.0</div>
+
+<h2>一、架构层面（最关键）</h2>
+<table>
+<tr><th>之前 devops91 ❌</th><th>本次 devops81 ✅</th></tr>
+<tr><td>k3s 缺省模式（不 disable kube-proxy）</td><td><code>--disable-kube-proxy</code></td></tr>
+<tr><td>Cilium <code>kubeProxyReplacement=false</code></td><td>Cilium <code>kubeProxyReplacement=true</code></td></tr>
+<tr><td>路由走 vxlan tunnel</td><td>eBPF 直通，无 tunnel</td></tr>
+</table>
+<p>→ metrics-server 不被 tunnel 拦截，避免 0/1 问题</p>
+
+<h2>二、registries.yaml 配置</h2>
+<ul>
+  <li>协议用 <code>http://</code> 不用 <code>https://</code></li>
+  <li>加 <code>docker.io</code> mirror 指向 Harbor rancher 项目</li>
+  <li>pause、coredns 等基础镜像从本地拉，不依赖外网</li>
+</ul>
+
+<h2>三、基础镜像版本匹配</h2>
+<table>
+<tr><th>组件</th><th>devops91 踩坑</th><th>devops81 成功</th></tr>
+<tr><td>coredns</td><td>Harbor 1.14.2 不匹配 k3s v1.35.4</td><td>用阿里云拉到正确版本 1.12.0</td></tr>
+<tr><td>metrics-server</td><td>版本不匹配</td><td>拉到 v0.7.2</td></tr>
+<tr><td>local-path</td><td>版本不匹配</td><td>拉到 v0.0.30</td></tr>
+</table>
+
+<h2>四、Istio Ambient 安装步骤</h2>
+<ul>
+  <li><span class="tag tag-ok">提前创建</span> 两个节点 <code>/opt/cni/bin/istio-cni</code> 符号链接</li>
+  <li><span class="tag tag-ok">excludeNamespaces</span> 必须包含 <code>[kube-system, istio-system]</code></li>
+  <li><span class="tag tag-ok">镜像路径</span> 用 Harbor 正确命名（<code>cilium-cilium</code> 不是 <code>cilium</code>）</li>
+</ul>
+
+<h2>五、操作规范</h2>
+<ol>
+  <li>国产镜像源 <code>rancher-mirror.rancher.cn</code> 避免 GitHub 下载失败</li>
+  <li>先配 registries.yaml 再装 Cilium，避免镜像拉不到反复重来</li>
+  <li>每一步确认后再继续，不跳步</li>
+  <li>外网拉不动时用阿里云 <code>registry.aliyuncs.com/google_containers/</code> 保底</li>
+</ol>
+
+</body>
+</html>

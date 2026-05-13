@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>devops111 vs devops91 架构差异分析</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f5f5f5; color: #222; line-height: 1.7; }
+h1 { border-bottom: 3px solid #e74c3c; padding-bottom: 8px; }
+h2 { background: #e74c3c; color: #fff; padding: 6px 14px; border-radius: 4px; font-size: 18px; margin-top: 28px; }
+h3 { color: #c0392b; margin-top: 18px; }
+pre { background: #f0f0f0; color: #1a1a1a; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 14px; border: 1px solid #d0d0d0; font-family: "SF Mono", Consolas, monospace; }
+code { font-family: "SF Mono", Consolas, monospace; background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; background: #fff; }
+th, td { border: 1px solid #ccc; padding: 10px 12px; text-align: left; }
+th { background: #e8f0fe; font-weight: 600; }
+.meta { color: #555; font-size: 14px; margin-bottom: 20px; }
+.note { background: #fff8e1; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 12px 0; border-radius: 4px; }
+.ok { color: #155724; background: #d4edda; padding: 2px 8px; border-radius: 3px; font-weight: 600; }
+.fail { color: #721c24; background: #f8d7da; padding: 2px 8px; border-radius: 3px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>devops111 vs devops91 架构差异分析</h1>
+<div class="meta">分析日期: 2026-05-13</div>
+
+<h2>架构差异对比</h2>
+<table>
+<tr><th>配置项</th><th>devops111 ✅ 正常</th><th>devops91 ❌ metrics-server 0/1</th></tr>
+<tr><td>k3s 版本</td><td>v1.31.5+k3s1</td><td>v1.35.4+k3s1</td></tr>
+<tr><td><code>--disable-kube-proxy</code></td><td><span class="ok">有</span></td><td><span class="fail">没有</span></td></tr>
+<tr><td><code>kubeProxyReplacement</code></td><td><span class="ok">true</span></td><td><span class="fail">false</span></td></tr>
+<tr><td>Cilium 版本</td><td>v1.16.6</td><td>v1.19.1</td></tr>
+<tr><td>Istio 版本</td><td>1.24.3</td><td>1.29.0</td></tr>
+<tr><td>路由模式</td><td>eBPF 直通（无 tunnel）</td><td><span class="fail">vxlan tunnel</span></td></tr>
+<tr><td>Harbor 镜像名</td><td><code>cilium-cilium</code> / <code>cilium-operator</code></td><td><code>cilium</code> / <code>operator-generic</code></td></tr>
+</table>
+
+<h2>devops111 能正常工作的原因</h2>
+<ul>
+  <li><code>--disable-kube-proxy</code> + <code>kubeProxyReplacement=true</code> → Cilium eBPF 完全接管所有路由</li>
+  <li>不存在 tunnel → host 到 pod 的流量走 eBPF 直通，不会被 vxlan 封装干扰</li>
+  <li>Istio Ambient 的 SNAT 流量在 eBPF 模式下能被正确处理</li>
+</ul>
+
+<h2>devops91 的问题根源</h2>
+<ul>
+  <li>没有 <code>--disable-kube-proxy</code></li>
+  <li>Cilium <code>kubeProxyReplacement=false</code> + <code>routing-mode: tunnel</code></li>
+  <li>metrics-server 到 node IP 的流量走 vxlan tunnel，回包被 eBPF 拦截</li>
+</ul>
+
+<h2>结论</h2>
+<div class="note">
+这不是一个配置参数能解决的，是架构不一致。
+</div>
+
+<h3>可行的方向</h3>
+<ol>
+  <li><strong>不改架构</strong>，加 CiliumClusterwideNetworkPolicy 放行 <code>169.254.7.127/32</code></li>
+  <li><strong>改成 devops111 的架构</strong>（重新安装 k3s 加 <code>--disable-kube-proxy</code>，Cilium 改 <code>kubeProxyReplacement=true</code>）</li>
+</ol>
+
+</body>
+</html>
