@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Istio Ambient 安装配置说明</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f5f5f5; color: #222; line-height: 1.7; }
+h1 { border-bottom: 3px solid #9b59b6; padding-bottom: 8px; }
+h2 { background: #9b59b6; color: #fff; padding: 6px 14px; border-radius: 4px; font-size: 18px; margin-top: 28px; }
+h3 { color: #7d3c98; margin-top: 18px; }
+pre { background: #f0f0f0; color: #1a1a1a; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 14px; border: 1px solid #d0d0d0; font-family: "SF Mono", "Cascadia Code", Consolas, monospace; }
+code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; background: #fff; }
+th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+th { background: #e8f0fe; font-weight: 600; }
+.meta { color: #555; font-size: 14px; margin-bottom: 20px; }
+.note { background: #fff8e1; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 12px 0; border-radius: 4px; }
+ol li { margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<h1>Istio Ambient 安装配置说明</h1>
+<div class="meta"><strong>版本:</strong> Istio 1.24.3 / 模式: Ambient</div>
+
+<h2>Harbor 镜像准备（node75）</h2>
+<pre>export http_proxy=http://10.20.50.4:10809
+export https_proxy=http://10.20.50.4:10809
+docker pull m.daocloud.io/docker.io/istio/pilot:1.24.3
+docker pull m.daocloud.io/docker.io/istio/proxyv2:1.24.3
+docker pull m.daocloud.io/docker.io/istio/ztunnel:1.24.3
+docker pull m.daocloud.io/docker.io/istio/install-cni:1.24.3
+unset http_proxy https_proxy
+
+docker tag m.daocloud.io/docker.io/istio/pilot:1.24.3 harbor.devops.local:7581/devops111/istio-pilot:1.24.3
+docker tag m.daocloud.io/docker.io/istio/proxyv2:1.24.3 harbor.devops.local:7581/devops111/istio-proxyv2:1.24.3
+docker tag m.daocloud.io/docker.io/istio/ztunnel:1.24.3 harbor.devops.local:7581/devops111/istio-ztunnel:1.24.3
+docker tag m.daocloud.io/docker.io/istio/install-cni:1.24.3 harbor.devops.local:7581/devops111/istio-install-cni:1.24.3
+docker push harbor.devops.local:7581/devops111/istio-pilot:1.24.3
+docker push harbor.devops.local:7581/devops111/istio-proxyv2:1.24.3
+docker push harbor.devops.local:7581/devops111/istio-ztunnel:1.24.3
+docker push harbor.devops.local:7581/devops111/istio-install-cni:1.24.3</pre>
+
+<h2>istioctl 安装</h2>
+<pre>export http_proxy=http://10.20.50.4:10809
+export https_proxy=http://10.20.50.4:10809
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.3 sh -
+unset http_proxy https_proxy
+echo 'export PATH=$PATH:/root/istio-1.24.3/bin' >> /etc/profile
+source /etc/profile</pre>
+
+<h2>安装步骤</h2>
+
+<h3>1. istio-base</h3>
+<pre>kubectl create namespace istio-system
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base \
+  --version 1.24.3 \
+  --namespace istio-system</pre>
+
+<h3>2. istiod</h3>
+<pre>helm install istiod istio/istiod \
+  --version 1.24.3 \
+  --namespace istio-system \
+  --set pilot.image=harbor.devops.local:7581/devops111/istio-pilot:1.24.3 \
+  --set pilot.imagePullPolicy=IfNotPresent \
+  --set global.proxy.image=harbor.devops.local:7581/devops111/istio-proxyv2:1.24.3 \
+  --set global.proxy.imagePullPolicy=IfNotPresent \
+  --set profile=ambient \
+  --set global.imagePullPolicy=IfNotPresent</pre>
+
+<h3>3. istio-cni（用 istioctl）</h3>
+<pre>istioctl install --set profile=ambient \
+  --set components.cni.enabled=true \
+  --set values.cni.image=harbor.devops.local:7581/devops111/istio-install-cni:1.24.3 \
+  --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/current/bin \
+  --set values.cni.cniConfDir=/etc/cni/net.d \
+  --set values.cni.chained=true \
+  --set values.pilot.image=harbor.devops.local:7581/devops111/istio-pilot:1.24.3 \
+  --set values.global.proxy.image=harbor.devops.local:7581/devops111/istio-proxyv2:1.24.3 \
+  -y</pre>
+
+<h3>4. ztunnel</h3>
+<pre>helm install ztunnel istio/ztunnel \
+  --version 1.24.3 \
+  --namespace istio-system \
+  --set image=harbor.devops.local:7581/devops111/istio-ztunnel:1.24.3 \
+  --set imagePullPolicy=IfNotPresent</pre>
+
+<h2>关键参数说明</h2>
+<table>
+<tr><th>参数</th><th>说明</th></tr>
+<tr><td><code>profile=ambient</code></td><td>启用 Ambient 模式，无 sidecar</td></tr>
+<tr><td><code>cni.chained=true</code></td><td>链式 CNI，不抢占 Cilium 主 CNI</td></tr>
+<tr><td><code>cni.cniBinDir</code></td><td>K3s CNI bin 路径 /var/lib/rancher/k3s/data/current/bin</td></tr>
+<tr><td>ztunnel</td><td>每节点 DaemonSet，负责 L4 透明加密和流量转发</td></tr>
+</table>
+
+<h2>与 Cilium 共存关键点</h2>
+<ol>
+  <li>Cilium 必须设置 <code>cni.exclusive=false</code> 并重启 DaemonSet</li>
+  <li>istio-cni 使用 <code>chained=true</code>，插入 Cilium conflist 而不是替换</li>
+  <li>K3s CNI bin 路径非标准，必须指定</li>
+  <li>安装顺序：istiod → istio-cni → ztunnel</li>
+</ol>
+
+<h2>验证</h2>
+<pre>kubectl get pods -n istio-system
+# 预期全部 1/1 Running：istiod, istio-cni-node(x2), ztunnel(x2)</pre>
+
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cilium 安装配置说明</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f5f5f5; color: #222; line-height: 1.7; }
+h1 { border-bottom: 3px solid #2ecc71; padding-bottom: 8px; }
+h2 { background: #2ecc71; color: #fff; padding: 6px 14px; border-radius: 4px; font-size: 18px; margin-top: 28px; }
+pre { background: #f0f0f0; color: #1a1a1a; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 14px; border: 1px solid #d0d0d0; font-family: "SF Mono", "Cascadia Code", Consolas, monospace; }
+code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; background: #fff; }
+th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+th { background: #e8f0fe; font-weight: 600; }
+.meta { color: #555; font-size: 14px; margin-bottom: 20px; }
+.note { background: #fff8e1; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 12px 0; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Cilium 安装配置说明</h1>
+<div class="meta"><strong>版本:</strong> Cilium v1.16.6</div>
+
+<h2>Harbor 镜像准备（node75）</h2>
+<pre>export http_proxy=http://10.20.50.4:10809
+export https_proxy=http://10.20.50.4:10809
+docker pull m.daocloud.io/quay.io/cilium/cilium:v1.16.6
+docker pull m.daocloud.io/quay.io/cilium/operator-generic:v1.16.6
+unset http_proxy https_proxy
+
+docker tag m.daocloud.io/quay.io/cilium/cilium:v1.16.6 harbor.devops.local:7581/devops111/cilium-cilium:v1.16.6
+docker tag m.daocloud.io/quay.io/cilium/operator-generic:v1.16.6 harbor.devops.local:7581/devops111/cilium-operator-generic:v1.16.6
+docker push harbor.devops.local:7581/devops111/cilium-cilium:v1.16.6
+docker push harbor.devops.local:7581/devops111/cilium-operator-generic:v1.16.6</pre>
+
+<h2>Helm 安装</h2>
+<pre>helm repo add cilium https://helm.cilium.io/
+helm repo update
+
+helm install cilium cilium/cilium \
+  --version 1.16.6 \
+  --namespace kube-system \
+  --set image.repository=harbor.devops.local:7581/devops111/cilium-cilium \
+  --set image.tag=v1.16.6 \
+  --set image.pullPolicy=IfNotPresent \
+  --set image.useDigest=false \
+  --set operator.image.repository=harbor.devops.local:7581/devops111/cilium-operator \
+  --set operator.image.tag=v1.16.6 \
+  --set operator.image.pullPolicy=IfNotPresent \
+  --set operator.image.useDigest=false \
+  --set operator.image.suffix="" \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=10.20.50.111 \
+  --set k8sServicePort=6443 \
+  --set ipam.mode=kubernetes \
+  --set cni.exclusive=false</pre>
+
+<h2>关键参数说明</h2>
+<table>
+<tr><th>参数</th><th>说明</th></tr>
+<tr><td><code>kubeProxyReplacement=true</code></td><td>用 eBPF 完全替代 kube-proxy</td></tr>
+<tr><td><code>k8sServiceHost/Port</code></td><td>APIServer 地址，kubeProxyReplacement 必填</td></tr>
+<tr><td><code>ipam.mode=kubernetes</code></td><td>使用 K8s 原生 IPAM</td></tr>
+<tr><td><code>cni.exclusive=false</code></td><td>允许 Istio CNI 链式插入，与 Istio Ambient 共存必须设置</td></tr>
+<tr><td><code>image.useDigest=false</code></td><td>禁用 digest 校验，使用 Harbor 私有镜像必须设置</td></tr>
+<tr><td><code>operator.image.suffix=""</code></td><td>清空 operator 镜像后缀，防止自动拼接 -generic</td></tr>
+</table>
+
+<h2>与 Istio Ambient 共存注意事项</h2>
+<div class="note"><code>cni.exclusive=false</code> 必须设置，否则 Cilium 阻止 istio-cni 写入 conflist</div>
+<pre>kubectl rollout restart daemonset/cilium -n kube-system</pre>
+
+</body>
+</html>

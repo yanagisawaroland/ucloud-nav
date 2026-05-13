@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>K3s 安装配置说明</title>
+<style>
+body{font-family:Helvetica,Arial,sans-serif;padding:20px;background:#f9f9f9;}
+pre{background:#111;color:#eee;padding:12px;border-radius:6px;overflow-x:auto;}
+table{border-collapse:collapse;width:100%;margin:15px 0;}
+th,td{border:1px solid #ccc;padding:8px;}
+h1,h2,h3{color:#222;}
+</style>
+</head>
+<body>
+<h1>K3s 安装配置说明</h1>
+<h2>版本</h2>
+<ul>
+<li>K3s: v1.31.5+k3s1</li>
+<li>Kubernetes: 1.31</li>
+</ul>
+<h2>节点信息</h2>
+<table>
+<thead>
+<tr><th>角色</th><th>主机名</th><th>IP</th></tr>
+</thead>
+<tbody>
+<tr><td>Server</td><td>master111</td><td>10.20.50.111</td></tr>
+<tr><td>Agent</td><td>node112</td><td>10.20.50.112</td></tr>
+</tbody>
+</table>
+<h2>master111 安装命令</h2>
+<pre>export http_proxy=http://10.20.50.4:10809
+export https_proxy=http://10.20.50.4:10809
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.31.5+k3s1" \
+  sh -s - server \
+  --disable traefik \
+  --disable servicelb \
+  --disable-kube-proxy \
+  --flannel-backend=none \
+  --cluster-cidr=10.42.0.0/16 \
+  --service-cidr=10.43.0.0/16 \
+  --node-ip=10.20.50.111 \
+  --advertise-address=10.20.50.111 \
+  --write-kubeconfig-mode=644
+
+unset http_proxy https_proxy</pre>
+<h2>node112 安装命令</h2>
+<pre>export http_proxy=http://10.20.50.4:10809
+export https_proxy=http://10.20.50.4:10809
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.31.5+k3s1" \
+  sh -s - agent \
+  --server https://10.20.50.111:6443 \
+  --token &lt;node-token&gt; \
+  --node-ip=10.20.50.112
+
+unset http_proxy https_proxy</pre>
+<h2>关键参数说明</h2>
+<table>
+<thead>
+<tr><th>参数</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td>--disable traefik</td><td>禁用默认 Ingress，由 Istio 接管</td></tr>
+<tr><td>--disable servicelb</td><td>禁用默认 LB</td></tr>
+<tr><td>--disable-kube-proxy</td><td>禁用 kube-proxy，由 Cilium eBPF 替代</td></tr>
+<tr><td>--flannel-backend=none</td><td>禁用 flannel，由 Cilium 接管 CNI</td></tr>
+<tr><td>--cluster-cidr</td><td>Pod 网段 10.42.0.0/16</td></tr>
+<tr><td>--service-cidr</td><td>Service 网段 10.43.0.0/16</td></tr>
+</tbody>
+</table>
+<h2>Harbor 认证配置（两个节点都需要）</h2>
+<p>文件路径：/etc/rancher/k3s/registries.yaml</p>
+<pre>mirrors:
+  harbor.devops.local:7581:
+    endpoint:
+      - "http://harbor.devops.local:7581"
+configs:
+  "harbor.devops.local:7581":
+    auth:
+      username: admin
+      password: Harbor12345
+    tls:
+      insecure_skip_verify: true</pre>
+<p>修改后重启：</p>
+<pre># master111
+systemctl restart k3s
+# node112
+systemctl restart k3s-agent</pre>
+<h2>环境变量</h2>
+<pre>echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /etc/profile
+source /etc/profile</pre>
+</body>
+</html>
