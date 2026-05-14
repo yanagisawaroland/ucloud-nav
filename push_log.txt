@@ -1249,3 +1249,38 @@ remote:
 To https://github.com/yanagisawaroland/ucloud-nav.git
  ! [remote rejected] main -> main (push declined due to repository rule violations)
 error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
+[main 520eefd] 定时自动更新 2026-05-15 01:05:01
+ 5 files changed, 116 insertions(+)
+ create mode 100644 0-master111-v1.html
+ create mode 100644 0-master81-v1.html
+ create mode 100644 202605142204_git_cmd.html
+remote: Powered by [01;33mGITEE.COM [0m[1.1.23]        
+remote: Set trace flag 204b9788        
+To https://gitee.com/ucloud68/ucloud-nav.git
+   36d8e8c..520eefd  main -> main
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— GitLab Access Token ———————————————————————————————        
+remote:        locations:        
+remote:          - commit: 13762e8b0202ab15f9ef9292f9a687340d06b1a3        
+remote:            path: 0.0.0.harbor-gitlab.html:23        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/yanagisawaroland/ucloud-nav/security/secret-scanning/unblock-secret/3DiHw74k136ubAY1q9C8c7iQQqi        
+remote:             
+remote: 
+remote: 
+To https://github.com/yanagisawaroland/ucloud-nav.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
