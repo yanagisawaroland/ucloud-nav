@@ -1348,3 +1348,35 @@ remote:
 To https://github.com/yanagisawaroland/ucloud-nav.git
  ! [remote rejected] main -> main (push declined due to repository rule violations)
 error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
+[main f037abf] 定时自动更新 2026-05-15 13:30:01
+ 1 file changed, 32 insertions(+)
+remote: Powered by [01;33mGITEE.COM [0m[1.1.23]        
+remote: Set trace flag 794e1194        
+To https://gitee.com/ucloud68/ucloud-nav.git
+   5f350c6..f037abf  main -> main
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— GitLab Access Token ———————————————————————————————        
+remote:        locations:        
+remote:          - commit: 13762e8b0202ab15f9ef9292f9a687340d06b1a3        
+remote:            path: 0.0.0.harbor-gitlab.html:23        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/yanagisawaroland/ucloud-nav/security/secret-scanning/unblock-secret/3DiHw74k136ubAY1q9C8c7iQQqi        
+remote:             
+remote: 
+remote: 
+To https://github.com/yanagisawaroland/ucloud-nav.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
