@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitLab + Gitee 仓库初始化与推送（master81-v1 / other81-v1）</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;padding:20px;background:#f5f5f5;color:#222;line-height:1.7}
+h1{border-bottom:3px solid #326ce5;padding-bottom:8px}
+h2{background:#326ce5;color:#fff;padding:6px 14px;border-radius:4px;font-size:18px;margin-top:28px}
+pre{background:#f0f0f0;color:#1a1a1a;padding:16px;border-radius:6px;overflow-x:auto;font-size:14px;border:1px solid #d0d0d0;font-family:"SF Mono",Consolas,monospace}
+.note{background:#fff8e1;border-left:4px solid #ffc107;padding:10px 15px;margin:12px 0;border-radius:4px}
+</style>
+</head>
+<body>
+
+<h1>GitLab + Gitee 仓库初始化与推送</h1>
+
+<h2>1. 创建本地目录和.gitkeep</h2>
+<pre>
+mkdir -p /www/master81-v1/other81-v1/{k3s,cilium,istio}
+
+cd /www/master81-v1/other81-v1
+
+git config user.email "root@devops81.lan"
+git config user.name "root"
+git init
+
+touch k3s/.gitkeep cilium/.gitkeep istio/.gitkeep</pre>
+
+<h2>2. 首次提交</h2>
+<pre>
+git add .
+git commit -m "初始化目录结构"</pre>
+
+<h2>3. 查 GitLab 已有组列表</h2>
+<pre>
+curl -s "http://gitlab.devops.local:7591/api/v4/groups" \
+  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  | python3 -c "import sys,json; print('\n'.join([f'{g[\"id\"]}: {g[\"name\"]}' for g in json.load(sys.stdin)]))"</pre>
+
+<h2>4. 在 GitLab 创建组 master81-v1</h2>
+<pre>
+curl -s -X POST "http://gitlab.devops.local:7591/api/v4/groups" \
+  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"master81-v1","path":"master81-v1","visibility":"private"}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('组ID:', d.get('id', d.get('message','')))"</pre>
+
+<h2>5. 在 GitLab 创建私有仓库 other81-v1</h2>
+<pre>
+curl -s -X POST "http://gitlab.devops.local:7591/api/v4/projects" \
+  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"other81-v1","namespace_id":135,"visibility":"private"}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('http_url_to_repo', d.get('message','')))"</pre>
+
+<h2>6. 绑定 GitLab 并推送</h2>
+<pre>
+cd /www/master81-v1/other81-v1
+
+git remote add gitlab http://root:huzhaofeng1234@gitlab.devops.local:7591/master81-v1/other81-v1.git
+
+git push gitlab master</pre>
+
+<h2>7. 在 Gitee 创建私有仓库 other81-v1</h2>
+<pre>
+curl -s -X POST "https://gitee.com/api/v5/orgs/master81-v1/repos" \
+  -H "Content-Type: application/json" \
+  -d '{"access_token":"cbd8acffa5f4e038b9327d85313dd587","name":"other81-v1","private":true,"auto_init":false}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('full_name', d.get('message','')))"</pre>
+
+<h2>8. 绑定 Gitee 并推送</h2>
+<pre>
+cd /www/master81-v1/other81-v1
+
+git remote add gitee https://yanagisawa:cbd8acffa5f4e038b9327d85313dd587@gitee.com/master81-v1/other81-v1.git
+
+git push gitee master</pre>
+
+</body>
+</html>
