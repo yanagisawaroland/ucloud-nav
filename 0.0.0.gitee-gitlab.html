@@ -35,13 +35,13 @@ git commit -m "初始化目录结构"</pre>
 <h2>3. 查 GitLab 已有组列表</h2>
 <pre>
 curl -s "http://gitlab.devops.local:7591/api/v4/groups" \
-  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  -H "PRIVATE-TOKEN: 你的GitLabToken" \
   | python3 -c "import sys,json; print('\n'.join([f'{g[\"id\"]}: {g[\"name\"]}' for g in json.load(sys.stdin)]))"</pre>
 
 <h2>4. 在 GitLab 创建组 master81-v1</h2>
 <pre>
 curl -s -X POST "http://gitlab.devops.local:7591/api/v4/groups" \
-  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  -H "PRIVATE-TOKEN: 你的GitLabToken" \
   -H "Content-Type: application/json" \
   -d '{"name":"master81-v1","path":"master81-v1","visibility":"private"}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('组ID:', d.get('id', d.get('message','')))"</pre>
@@ -49,7 +49,7 @@ curl -s -X POST "http://gitlab.devops.local:7591/api/v4/groups" \
 <h2>5. 在 GitLab 创建私有仓库 other81-v1</h2>
 <pre>
 curl -s -X POST "http://gitlab.devops.local:7591/api/v4/projects" \
-  -H "PRIVATE-TOKEN: glpat-m9iZ4vhjr-JssshmkpdT" \
+  -H "PRIVATE-TOKEN: 你的GitLabToken" \
   -H "Content-Type: application/json" \
   -d '{"name":"other81-v1","namespace_id":135,"visibility":"private"}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('http_url_to_repo', d.get('message','')))"</pre>
