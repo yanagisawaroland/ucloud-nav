@@ -1678,3 +1678,11 @@ remote:
 To https://github.com/yanagisawaroland/ucloud-nav.git
  ! [remote rejected] main -> main (push declined due to repository rule violations)
 error: failed to push some refs to 'https://github.com/yanagisawaroland/ucloud-nav.git'
+On branch main
+nothing to commit, working tree clean
+fatal: 'gitee' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+Everything up-to-date
