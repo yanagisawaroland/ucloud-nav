@@ -7,13 +7,12 @@ cat > "$INDEX" <<'HTML'
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>先想后做-THINKER</title>
+<title>服务导航页</title>
 <style>
 body {
     background: #f5f7fa;
     font-family: "Microsoft YaHei", Arial;
     padding: 50px 20px;
-    margin: 0;
 }
 .container {
     max-width: 1200px;
@@ -25,9 +24,7 @@ h1 {
     font-size: 32px;
     margin-bottom: 40px;
     color: #2c3e50;
-    letter-spacing: 2px;
 }
-/* 原有全局链接样式不变 */
 a {
     display: block;
     font-size: 24px;
@@ -35,63 +32,45 @@ a {
     color: #005cc5;
     text-decoration: none;
     padding: 8px 0;
-    transition: all 0.25s ease;
 }
 a:hover {
     color: #032f62;
     font-weight: bold;
 }
-/* 0开头横向容器 */
-.quick-nav {
+.row {
     display: flex;
     flex-wrap: wrap;
-    gap: 30px;
-    margin-bottom: 30px;
-    padding: 16px 20px;
-    background: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    gap: 40px;
+    margin-bottom: 20px;
 }
-.quick-nav a {
+.row a {
     display: inline-block;
-    padding: 6px 16px;
+    padding: 0;
     line-height: 2.8;
-    background: #f0f7ff;
-    border-radius: 6px;
-}
-.quick-nav a:hover {
-    background: #005cc5;
-    color: #fff;
-}
-/* 分隔标题 */
-.split-title {
-    font-size: 20px;
-    color: #666;
-    margin: 20px 0 10px 0;
-    padding-left: 8px;
-    border-left: 4px solid #005cc5;
 }
 </style>
 </head>
 <body>
 <div class="container">
-<h1>先想后做-THINKER</h1>
+<h1>服务文档导航</h1>
 
-<div class="split-title">常用快捷入口</div>
-<div class="quick-nav">
+<!-- 0 开头文件：横排 -->
+<div class="row">
 HTML
 
 cd "$DIR"
-# 0开头快捷链接横排美化卡片
+
+# 生成 0 开头横排
 for file in 0*.html; do
     if [ -f "$file" ] && [ "$file" != "index.html" ]; then
         echo "<a href=\"./$file\">$file</a>" >> "$INDEX"
     fi
 done
+
+# 关闭横排区域
 echo "</div>" >> "$INDEX"
 
-# 其余文件竖排保持原版样式
-echo "<div class=\"split-title\">其他文档入口</div>" >> "$INDEX"
+# 生成 非0 开头竖排（原样）
 for file in *.html; do
     if [[ "$file" != 0*.html && "$file" != "index.html" && -f "$file" ]]; then
         echo "<a href=\"./$file\">$file</a>" >> "$INDEX"
@@ -100,5 +79,5 @@ done
 
 echo "</div></body></html>" >> "$INDEX"
 
-echo "✅ 导航页标题修改完成"
+echo "✅ index.html 已生成完成！"
 echo "📍 路径：$INDEX"

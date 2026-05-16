@@ -2,12 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>服务导航页</title>
+<title>先想后做-THINKER</title>
 <style>
 body {
     background: #f5f7fa;
     font-family: "Microsoft YaHei", Arial;
     padding: 50px 20px;
+    margin: 0;
 }
 .container {
     max-width: 1200px;
@@ -19,7 +20,9 @@ h1 {
     font-size: 32px;
     margin-bottom: 40px;
     color: #2c3e50;
+    letter-spacing: 2px;
 }
+/* 原有全局链接样式不变 */
 a {
     display: block;
     font-size: 24px;
@@ -27,77 +30,112 @@ a {
     color: #005cc5;
     text-decoration: none;
     padding: 8px 0;
+    transition: all 0.25s ease;
 }
 a:hover {
     color: #032f62;
     font-weight: bold;
 }
+/* 0开头横向容器 */
+.quick-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    margin-bottom: 30px;
+    padding: 16px 20px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+.quick-nav a {
+    display: inline-block;
+    padding: 6px 16px;
+    line-height: 2.8;
+    background: #f0f7ff;
+    border-radius: 6px;
+}
+.quick-nav a:hover {
+    background: #005cc5;
+    color: #fff;
+}
+/* 分隔标题 */
+.split-title {
+    font-size: 20px;
+    color: #666;
+    margin: 20px 0 10px 0;
+    padding-left: 8px;
+    border-left: 4px solid #005cc5;
+}
 </style>
 </head>
 <body>
 <div class="container">
-<h1>服务文档导航</h1>
-<a href=./0-master111-v1.html>0-master111-v1.html</a>
-<a href=./0-master81-v1.html>0-master81-v1.html</a>
-<a href=./0.0.0.argocd.html>0.0.0.argocd.html</a>
-<a href=./0.0.0.gitee-gitlab.html>0.0.0.gitee-gitlab.html</a>
-<a href=./0.0.0.harbor-gitlab.html>0.0.0.harbor-gitlab.html</a>
-<a href=./0.0.0.istio.html>0.0.0.istio.html</a>
-<a href=./0.0.0.linux.html>0.0.0.linux.html</a>
-<a href=./10.20.50.0-nav.html>10.20.50.0-nav.html</a>
-<a href=./202604252049_k8s-arch-evolution.html>202604252049_k8s-arch-evolution.html</a>
-<a href=./202604252049_k8s-canary-flow.html>202604252049_k8s-canary-flow.html</a>
-<a href=./202604252049_k8s-cni.html>202604252049_k8s-cni.html</a>
-<a href=./202604252049_k8s-fault-propagation.html>202604252049_k8s-fault-propagation.html</a>
-<a href=./202604252049_k8s-scheduler-flow.html>202604252049_k8s-scheduler-flow.html</a>
-<a href=./202604252312_k8s-istio-overview.html>202604252312_k8s-istio-overview.html</a>
-<a href=./202604260446_k8s-pod-lifecycle.html>202604260446_k8s-pod-lifecycle.html</a>
-<a href=./202604260529_memo.html>202604260529_memo.html</a>
-<a href=./202604261613_k8s-service.html>202604261613_k8s-service.html</a>
-<a href=./202604270941_k8s-deploy-strategy.html>202604270941_k8s-deploy-strategy.html</a>
-<a href=./202604271844_k8s-etcd-watch.html>202604271844_k8s-etcd-watch.html</a>
-<a href=./202604280300_yulin_economy_20260428_030035.html>202604280300_yulin_economy_20260428_030035.html</a>
-<a href=./202604280306_k8s-hpa_flow_20260428_030623.html>202604280306_k8s-hpa_flow_20260428_030623.html</a>
-<a href=./202604281618_k8s_rbac_20260428_161816.html>202604281618_k8s_rbac_20260428_161816.html</a>
-<a href=./202604281624_k8s_rbac2_20260428_162406.html>202604281624_k8s_rbac2_20260428_162406.html</a>
-<a href=./202604281629_k8s_resources_qos_20260428_162951.html>202604281629_k8s_resources_qos_20260428_162951.html</a>
-<a href=./202604281636_pv-pvc-flow.html>202604281636_pv-pvc-flow.html</a>
-<a href=./202604290129_k8s-networkpolicy.html>202604290129_k8s-networkpolicy.html</a>
-<a href=./202604290231_k8s-istio-flow.html>202604290231_k8s-istio-flow.html</a>
-<a href=./202604290247_k8s-service-flow.html>202604290247_k8s-service-flow.html</a>
-<a href=./202604290610_k8s-network-bindmap.html>202604290610_k8s-network-bindmap.html</a>
-<a href=./202604290631_k8s-control-plane.html>202604290631_k8s-control-plane.html</a>
-<a href=./202604290646_k8s-control-plane-watch-flow.html>202604290646_k8s-control-plane-watch-flow.html</a>
-<a href=./202604291722_k8s_operator_20260429_172200.html>202604291722_k8s_operator_20260429_172200.html</a>
-<a href=./202604291729_k8s_taint_toleration_20260429_172957.html>202604291729_k8s_taint_toleration_20260429_172957.html</a>
-<a href=./202605020225_priority-preemption.html>202605020225_priority-preemption.html</a>
-<a href=./202605020310_vpa-recommendation.html>202605020310_vpa-recommendation.html</a>
-<a href=./202605021949_xinjiang_complete.html>202605021949_xinjiang_complete.html</a>
-<a href=./202605050053_pxc-mysql-cluster.html>202605050053_pxc-mysql-cluster.html</a>
-<a href=./202605050100_mysql-clusters-diagram.html>202605050100_mysql-clusters-diagram.html</a>
-<a href=./202605050109_pxc_vs_other_mysql_cluster.html>202605050109_pxc_vs_other_mysql_cluster.html</a>
-<a href=./202605050202-python-learning-flow.html>202605050202-python-learning-flow.html</a>
-<a href=./20260505040256-istio-observability.html>20260505040256-istio-observability.html</a>
-<a href=./20260505041423-istio-observability.html>20260505041423-istio-observability.html</a>
-<a href=./202605050516-k8s-velero-guide.html>202605050516-k8s-velero-guide.html</a>
-<a href=./202605052144-ebpf-otel-flow.html>202605052144-ebpf-otel-flow.html</a>
-<a href=./202605081746-cilium-ambient-istio-flow.html>202605081746-cilium-ambient-istio-flow.html</a>
-<a href=./202605100013-cilium-istio-ambient-guide.html>202605100013-cilium-istio-ambient-guide.html</a>
-<a href=./202605100714-cilium-istio-ambient-lessons-1.html>202605100714-cilium-istio-ambient-lessons-1.html</a>
-<a href=./202605100724-cilium-istio-ambient-deep-dive.html>202605100724-cilium-istio-ambient-deep-dive.html</a>
-<a href=./202605122132_k3s-cilium-istio-ambient-troubleshooting-2.html>202605122132_k3s-cilium-istio-ambient-troubleshooting-2.html</a>
-<a href=./202605122132_k3s-cilium-istio-ambient-troubleshooting.html>202605122132_k3s-cilium-istio-ambient-troubleshooting.html</a>
-<a href=./202605130526_cilium-install.html>202605130526_cilium-install.html</a>
-<a href=./202605130526_istio-ambient-install.html>202605130526_istio-ambient-install.html</a>
-<a href=./202605130526_k3s-install.html>202605130526_k3s-install.html</a>
-<a href=./202605130527_cilium-install.html>202605130527_cilium-install.html</a>
-<a href=./202605130527_istio-ambient-install.html>202605130527_istio-ambient-install.html</a>
-<a href=./202605130527_k3s-install.html>202605130527_k3s-install.html</a>
-<a href=./202605130528_devops111-vs-devops91-analysis.html>202605130528_devops111-vs-devops91-analysis.html</a>
-<a href=./20260513_cilium-install.html>20260513_cilium-install.html</a>
-<a href=./20260513_installation-summary.html>20260513_installation-summary.html</a>
-<a href=./20260513_istio-ambient-install.html>20260513_istio-ambient-install.html</a>
-<a href=./20260513_k3s-install.html>20260513_k3s-install.html</a>
-<a href=./20260513_troubleshooting.html>20260513_troubleshooting.html</a>
-<a href=./202605142204_git_cmd.html>202605142204_git_cmd.html</a>
+<h1>先想后做-THINKER</h1>
+
+<div class="split-title">常用快捷入口</div>
+<div class="quick-nav">
+<a href="./0-all-vm-nav.html">0-all-vm-nav.html</a>
+<a href="./0-gitee.com.html">0-gitee.com.html</a>
+<a href="./0-gitlab.devops.local.html">0-gitlab.devops.local.html</a>
+<a href="./0-harbor.devops.local.html">0-harbor.devops.local.html</a>
+<a href="./0.0.0.gitee-gitlab.html">0.0.0.gitee-gitlab.html</a>
+<a href="./0.0.0.istio.html">0.0.0.istio.html</a>
+<a href="./0.0.0.linux.html">0.0.0.linux.html</a>
+</div>
+<div class="split-title">其他文档入口</div>
+<a href="./202604252049_k8s-arch-evolution.html">202604252049_k8s-arch-evolution.html</a>
+<a href="./202604252049_k8s-canary-flow.html">202604252049_k8s-canary-flow.html</a>
+<a href="./202604252049_k8s-cni.html">202604252049_k8s-cni.html</a>
+<a href="./202604252049_k8s-fault-propagation.html">202604252049_k8s-fault-propagation.html</a>
+<a href="./202604252049_k8s-scheduler-flow.html">202604252049_k8s-scheduler-flow.html</a>
+<a href="./202604252312_k8s-istio-overview.html">202604252312_k8s-istio-overview.html</a>
+<a href="./202604260446_k8s-pod-lifecycle.html">202604260446_k8s-pod-lifecycle.html</a>
+<a href="./202604260529_memo.html">202604260529_memo.html</a>
+<a href="./202604261613_k8s-service.html">202604261613_k8s-service.html</a>
+<a href="./202604270941_k8s-deploy-strategy.html">202604270941_k8s-deploy-strategy.html</a>
+<a href="./202604271844_k8s-etcd-watch.html">202604271844_k8s-etcd-watch.html</a>
+<a href="./202604280300_yulin_economy_20260428_030035.html">202604280300_yulin_economy_20260428_030035.html</a>
+<a href="./202604280306_k8s-hpa_flow_20260428_030623.html">202604280306_k8s-hpa_flow_20260428_030623.html</a>
+<a href="./202604281618_k8s_rbac_20260428_161816.html">202604281618_k8s_rbac_20260428_161816.html</a>
+<a href="./202604281624_k8s_rbac2_20260428_162406.html">202604281624_k8s_rbac2_20260428_162406.html</a>
+<a href="./202604281629_k8s_resources_qos_20260428_162951.html">202604281629_k8s_resources_qos_20260428_162951.html</a>
+<a href="./202604281636_pv-pvc-flow.html">202604281636_pv-pvc-flow.html</a>
+<a href="./202604290129_k8s-networkpolicy.html">202604290129_k8s-networkpolicy.html</a>
+<a href="./202604290231_k8s-istio-flow.html">202604290231_k8s-istio-flow.html</a>
+<a href="./202604290247_k8s-service-flow.html">202604290247_k8s-service-flow.html</a>
+<a href="./202604290610_k8s-network-bindmap.html">202604290610_k8s-network-bindmap.html</a>
+<a href="./202604290631_k8s-control-plane.html">202604290631_k8s-control-plane.html</a>
+<a href="./202604290646_k8s-control-plane-watch-flow.html">202604290646_k8s-control-plane-watch-flow.html</a>
+<a href="./202604291722_k8s_operator_20260429_172200.html">202604291722_k8s_operator_20260429_172200.html</a>
+<a href="./202604291729_k8s_taint_toleration_20260429_172957.html">202604291729_k8s_taint_toleration_20260429_172957.html</a>
+<a href="./202605020225_priority-preemption.html">202605020225_priority-preemption.html</a>
+<a href="./202605020310_vpa-recommendation.html">202605020310_vpa-recommendation.html</a>
+<a href="./202605021949_xinjiang_complete.html">202605021949_xinjiang_complete.html</a>
+<a href="./202605050053_pxc-mysql-cluster.html">202605050053_pxc-mysql-cluster.html</a>
+<a href="./202605050100_mysql-clusters-diagram.html">202605050100_mysql-clusters-diagram.html</a>
+<a href="./202605050109_pxc_vs_other_mysql_cluster.html">202605050109_pxc_vs_other_mysql_cluster.html</a>
+<a href="./202605050202-python-learning-flow.html">202605050202-python-learning-flow.html</a>
+<a href="./20260505040256-istio-observability.html">20260505040256-istio-observability.html</a>
+<a href="./20260505041423-istio-observability.html">20260505041423-istio-observability.html</a>
+<a href="./202605050516-k8s-velero-guide.html">202605050516-k8s-velero-guide.html</a>
+<a href="./202605052144-ebpf-otel-flow.html">202605052144-ebpf-otel-flow.html</a>
+<a href="./202605081746-cilium-ambient-istio-flow.html">202605081746-cilium-ambient-istio-flow.html</a>
+<a href="./202605100013-cilium-istio-ambient-guide.html">202605100013-cilium-istio-ambient-guide.html</a>
+<a href="./202605100714-cilium-istio-ambient-lessons-1.html">202605100714-cilium-istio-ambient-lessons-1.html</a>
+<a href="./202605100724-cilium-istio-ambient-deep-dive.html">202605100724-cilium-istio-ambient-deep-dive.html</a>
+<a href="./202605122132_k3s-cilium-istio-ambient-troubleshooting-2.html">202605122132_k3s-cilium-istio-ambient-troubleshooting-2.html</a>
+<a href="./202605122132_k3s-cilium-istio-ambient-troubleshooting.html">202605122132_k3s-cilium-istio-ambient-troubleshooting.html</a>
+<a href="./202605130526_cilium-install.html">202605130526_cilium-install.html</a>
+<a href="./202605130526_istio-ambient-install.html">202605130526_istio-ambient-install.html</a>
+<a href="./202605130526_k3s-install.html">202605130526_k3s-install.html</a>
+<a href="./202605130527_cilium-install.html">202605130527_cilium-install.html</a>
+<a href="./202605130527_istio-ambient-install.html">202605130527_istio-ambient-install.html</a>
+<a href="./202605130527_k3s-install.html">202605130527_k3s-install.html</a>
+<a href="./202605130528_devops111-vs-devops91-analysis.html">202605130528_devops111-vs-devops91-analysis.html</a>
+<a href="./20260513_cilium-install.html">20260513_cilium-install.html</a>
+<a href="./20260513_installation-summary.html">20260513_installation-summary.html</a>
+<a href="./20260513_istio-ambient-install.html">20260513_istio-ambient-install.html</a>
+<a href="./20260513_k3s-install.html">20260513_k3s-install.html</a>
+<a href="./20260513_troubleshooting.html">20260513_troubleshooting.html</a>
+<a href="./202605142204_git_cmd.html">202605142204_git_cmd.html</a>
 </div></body></html>
