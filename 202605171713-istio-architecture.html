@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Istio 架构模式对比动态图</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #dde3ec;
+    --accent1: #2563eb;
+    --accent2: #0891b2;
+    --ambient: #059669;
+    --sidecar: #7c3aed;
+    --arrow: #94a3b8;
+    --text: #1e293b;
+    --muted: #64748b;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); font-family: 'Segoe UI', 'PingFang SC', sans-serif; color: var(--text); min-height: 100vh; }
+  header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 28px 40px; text-align: center; }
+  header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: 1px; }
+  header p { margin-top: 6px; opacity: 0.85; font-size: 0.95rem; }
+  .controls { display: flex; justify-content: center; gap: 12px; padding: 20px; flex-wrap: wrap; }
+  .btn { padding: 9px 22px; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-ambient { background: var(--ambient); color: #fff; }
+  .btn-sidecar { background: var(--sidecar); color: #fff; }
+  .btn-both { background: var(--accent1); color: #fff; }
+  .btn-anim { background: #f59e0b; color: #fff; }
+  .btn:hover { opacity: 0.85; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn.active { box-shadow: 0 0 0 3px rgba(255,255,255,0.5), 0 4px 12px rgba(0,0,0,0.2); }
+  .diagrams { display: flex; gap: 24px; padding: 0 32px 32px; flex-wrap: wrap; justify-content: center; }
+  .panel { background: var(--card); border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); flex: 1; min-width: 340px; max-width: 560px; padding: 24px; }
+  .panel-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 2px solid; display: flex; align-items: center; gap: 8px; }
+  .panel-ambient .panel-title { color: var(--ambient); border-color: var(--ambient); }
+  .panel-sidecar .panel-title { color: var(--sidecar); border-color: var(--sidecar); }
+  .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .badge-ambient { background: #d1fae5; color: var(--ambient); }
+  .badge-sidecar { background: #ede9fe; color: var(--sidecar); }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .node { width: 220px; padding: 10px 16px; border-radius: 8px; text-align: center; font-size: 0.88rem; font-weight: 600; border: 2px solid; position: relative; transition: all 0.3s; cursor: default; }
+  .node:hover { transform: scale(1.04); z-index: 2; }
+  .node-label { font-size: 0.72rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .arrow { width: 2px; height: 32px; background: var(--arrow); position: relative; display: flex; align-items: flex-end; justify-content: center; }
+  .arrow::after { content: '▼'; color: var(--arrow); font-size: 12px; position: absolute; bottom: -4px; }
+  .arrow-label { font-size: 0.7rem; color: var(--muted); position: absolute; left: 10px; top: 8px; white-space: nowrap; }
+  /* Ambient node colors */
+  .n-istiod    { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+  .n-ztunnel   { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+  .n-cni       { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+  .n-waypoint  { background: #f0fdf4; border-color: #86efac; color: #166534; }
+  .n-ingress   { background: #e0f2fe; border-color: #7dd3fc; color: #0c4a6e; }
+  .n-egress    { background: #fce7f3; border-color: #f9a8d4; color: #9d174d; }
+  .n-pod       { background: #f5f3ff; border-color: #c4b5fd; color: #5b21b6; }
+  /* Sidecar node colors */
+  .n-proxy     { background: #fdf4ff; border-color: #d8b4fe; color: #6b21a8; }
+  /* Animated packet */
+  .packet { width: 12px; height: 12px; border-radius: 50%; position: absolute; display: none; z-index: 10; }
+  .packet-ambient { background: var(--ambient); box-shadow: 0 0 8px var(--ambient); }
+  .packet-sidecar { background: var(--sidecar); box-shadow: 0 0 8px var(--sidecar); }
+  @keyframes flow-down { 0%{top:0;opacity:1} 100%{top:100%;opacity:0} }
+  .flowing .packet { display: block; animation: flow-down 0.8s linear infinite; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 32px 24px; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .hidden { display: none !important; }
+  .desc { background: #f8fafc; border-left: 4px solid #cbd5e1; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-top: 16px; font-size: 0.83rem; color: var(--muted); line-height: 1.6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Istio 架构模式对比</h1>
+  <p>Ambient 无边车模式 vs Sidecar 边车模式 — 组件逻辑流程动态图</p>
+</header>
+
+<div class="controls">
+  <button class="btn btn-ambient active" onclick="showPanel('ambient')">🌿 仅显示 Ambient</button>
+  <button class="btn btn-sidecar" onclick="showPanel('sidecar')">🔮 仅显示 Sidecar</button>
+  <button class="btn btn-both" onclick="showPanel('both')">📊 并排对比</button>
+  <button class="btn btn-anim" id="animBtn" onclick="toggleAnim()">▶ 启动流量动画</button>
+</div>
+
+<div class="diagrams">
+  <!-- Ambient Panel -->
+  <div class="panel panel-ambient" id="panel-ambient">
+    <div class="panel-title">
+      🌿 Ambient 模式（无边车）
+      <span class="badge badge-ambient">Zero-Sidecar</span>
+    </div>
+    <div class="flow" id="flow-ambient">
+      <div class="node n-ingress">istio-ingressgateway<div class="node-label">南北向流量入口</div></div>
+      <div class="arrow"><div class="arrow-label">HTTP/gRPC 流量</div><div class="packet packet-ambient" id="pkt-a1"></div></div>
+      <div class="node n-istiod">istiod<div class="node-label">控制平面 · 策略下发 · 证书管理</div></div>
+      <div class="arrow"><div class="packet packet-ambient" id="pkt-a2"></div></div>
+      <div class="node n-cni">istio-cni<div class="node-label">节点网络重定向 · iptables/eBPF</div></div>
+      <div class="arrow"><div class="packet packet-ambient" id="pkt-a3"></div></div>
+      <div class="node n-ztunnel">ztunnel<div class="node-label">L4 mTLS 隧道 · 每节点 DaemonSet</div></div>
+      <div class="arrow"><div class="arrow-label">L7 需要时经 Waypoint</div><div class="packet packet-ambient" id="pkt-a4"></div></div>
+      <div class="node n-waypoint">waypoint proxy<div class="node-label">L7 策略处理（按需部署）</div></div>
+      <div class="arrow"><div class="packet packet-ambient" id="pkt-a5"></div></div>
+      <div class="node n-pod">业务 Pod<div class="node-label">无 Sidecar · 原生容器</div></div>
+      <div class="arrow"><div class="packet packet-ambient" id="pkt-a6"></div></div>
+      <div class="node n-egress">egressgateway<div class="node-label">南北向出口流量</div></div>
+    </div>
+    <div class="desc">
+      <b>特点：</b>无需注入 Sidecar，ztunnel 在节点级别处理 L4 mTLS，L7 策略通过按需部署的 Waypoint Proxy 处理。资源开销低，适合大规模集群。
+    </div>
+  </div>
+
+  <!-- Sidecar Panel -->
+  <div class="panel panel-sidecar" id="panel-sidecar">
+    <div class="panel-title">
+      🔮 Sidecar 模式（边车）
+      <span class="badge badge-sidecar">Classic</span>
+    </div>
+    <div class="flow" id="flow-sidecar">
+      <div class="node n-ingress">istio-ingressgateway<div class="node-label">南北向流量入口</div></div>
+      <div class="arrow"><div class="arrow-label">HTTP/gRPC 流量</div><div class="packet packet-sidecar" id="pkt-s1"></div></div>
+      <div class="node n-istiod">istiod<div class="node-label">控制平面 · xDS 配置下发</div></div>
+      <div class="arrow"><div class="packet packet-sidecar" id="pkt-s2"></div></div>
+      <div class="node n-cni">istio-cni<div class="node-label">节点网络重定向 · iptables 规则</div></div>
+      <div class="arrow"><div class="packet packet-sidecar" id="pkt-s3"></div></div>
+      <div class="node n-proxy">istio-proxy (Envoy)<div class="node-label">每 Pod 注入 · L4/L7 策略执行</div></div>
+      <div class="arrow"><div class="arrow-label">Pod 内流量拦截</div><div class="packet packet-sidecar" id="pkt-s4"></div></div>
+      <div class="node n-pod">业务 Pod<div class="node-label">业务容器 + Sidecar 容器</div></div>
+      <div class="arrow"><div class="packet packet-sidecar" id="pkt-s5"></div></div>
+      <div class="node n-egress">egressgateway<div class="node-label">南北向出口流量</div></div>
+    </div>
+    <div class="desc">
+      <b>特点：</b>每个 Pod 注入 istio-proxy (Envoy) 容器，流量在 Pod 内被拦截处理。L4/L7 策略均在 Sidecar 中执行，功能完整但资源消耗较高。
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>控制平面</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#059669"></div>Ambient 数据平面</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Sidecar 数据平面</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0891b2"></div>网关</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#92400e"></div>CNI 插件</div>
+</div>
+
+<script>
+  let animating = false;
+  let timers = [];
+
+  function showPanel(mode) {
+    const a = document.getElementById('panel-ambient');
+    const s = document.getElementById('panel-sidecar');
+    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    if (mode === 'ambient') {
+      a.classList.remove('hidden'); s.classList.add('hidden');
+      document.querySelectorAll('.btn-ambient').forEach(b => b.classList.add('active'));
+    } else if (mode === 'sidecar') {
+      s.classList.remove('hidden'); a.classList.add('hidden');
+      document.querySelectorAll('.btn-sidecar').forEach(b => b.classList.add('active'));
+    } else {
+      a.classList.remove('hidden'); s.classList.remove('hidden');
+      document.querySelectorAll('.btn-both').forEach(b => b.classList.add('active'));
+    }
+  }
+
+  function toggleAnim() {
+    animating = !animating;
+    const btn = document.getElementById('animBtn');
+    const flows = document.querySelectorAll('.flow');
+    if (animating) {
+      btn.textContent = '⏹ 停止动画';
+      flows.forEach(f => f.classList.add('flowing'));
+    } else {
+      btn.textContent = '▶ 启动流量动画';
+      flows.forEach(f => f.classList.remove('flowing'));
+    }
+  }
+</script>
+</body>
+</html>
