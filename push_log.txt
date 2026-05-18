@@ -1759,3 +1759,12 @@ Please make sure you have the correct access rights
 and the repository exists.
 To https://github.com/yanagisawaroland/ucloud-nav.git
    8b153e2..c2ea347  main -> main
+[main bb94769] 定时自动更新 2026-05-18 11:30:01
+ 1 file changed, 9 insertions(+)
+fatal: 'gitee' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+To https://github.com/yanagisawaroland/ucloud-nav.git
+   c2ea347..bb94769  main -> main
