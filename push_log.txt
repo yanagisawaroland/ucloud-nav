@@ -1849,3 +1849,25 @@ Please make sure you have the correct access rights
 and the repository exists.
 To https://github.com/yanagisawaroland/ucloud-nav.git
    125efcf..924a2df  main -> main
+[main 8533cb7] 定时自动更新 2026-05-20 01:05:01
+ 14 files changed, 13 insertions(+), 1221 deletions(-)
+ delete mode 100644 202605100724-cilium-istio-ambient-deep-dive.html
+ delete mode 100644 202605122132_k3s-cilium-istio-ambient-troubleshooting-2.html
+ delete mode 100644 202605122132_k3s-cilium-istio-ambient-troubleshooting.html
+ delete mode 100644 202605130526_cilium-install.html
+ delete mode 100644 202605130526_k3s-install.html
+ delete mode 100644 202605130527_istio-ambient-install.html
+ delete mode 100644 202605130527_k3s-install.html
+ delete mode 100644 20260513_istio-ambient-install.html
+ delete mode 100644 20260513_k3s-install.html
+ delete mode 100644 20260513_troubleshooting.html
+ delete mode 100644 202605142204_git_cmd.html
+fatal: 'gitee' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+error: RPC failed; curl 56 GnuTLS recv error (-110): The TLS connection was non-properly terminated.
+send-pack: unexpected disconnect while reading sideband packet
+fatal: the remote end hung up unexpectedly
+Everything up-to-date
